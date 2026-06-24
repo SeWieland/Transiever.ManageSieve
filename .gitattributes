@@ -1,0 +1,9 @@
+* text=auto
+
+*.cs text eol=lf
+*.csproj text eol=lf
+*.slnx text eol=lf
+*.md text eol=lf
+*.json text eol=lf
+*.sieve text eol=lf
+*.editorconfig text eol=lf

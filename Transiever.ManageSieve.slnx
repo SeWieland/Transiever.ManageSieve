@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Transiever.ManageSieve.IntegrationTest/Transiever.ManageSieve.IntegrationTest.csproj" />
+    <Project Path="src/Transiever.ManageSieve.LiveTest/Transiever.ManageSieve.LiveTest.csproj" />
+    <Project Path="src/Transiever.ManageSieve.UnitTest/Transiever.ManageSieve.UnitTest.csproj" />
+    <Project Path="src/Transiever.ManageSieve/Transiever.ManageSieve.csproj" />
+  </Folder>
+</Solution>
