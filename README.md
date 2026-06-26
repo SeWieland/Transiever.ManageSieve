@@ -1,26 +1,35 @@
 # Transiever.ManageSieve
 
-Transiever.ManageSieve is a .NET-native, async-first client for the ManageSieve protocol
-defined by RFC 5804.
+Cross-platform .NET library for inspecting and managing server-side Sieve scripts
+through the RFC 5804 ManageSieve protocol.
 
-The client implements TCP and TLS transport, streaming response parsing, SASL
-authentication, session-state validation, timeouts, and the RFC 5804 command
-surface.
+The client implements TCP and TLS transport, streaming response parsing, SASL authentication,
+session-state validation, timeouts, and the RFC 5804 command surface.
 
-## Available API surface
+## Documentation Map
 
-`IManageSieveClient` exposes:
+Start here, then follow the focused guides:
 
-* Connect, capability refresh, STARTTLS, authentication, and unauthentication
-* HAVESPACE quota preflight
-* List and retrieve scripts
-* Validate and upload scripts
-* Activate a script or disable Sieve processing
-* Rename and delete scripts
-* NOOP, logout, and asynchronous disposal
+* [library guide](src/Transiever.ManageSieve/README.md) for the public API, script operations, and security behavior.
+* [architecture](docs/architecture.md) for protocol layering, parsing constraints, public API rules, and repository boundaries.
+* [testing](docs/testing.md) for unit, Docker-backed integration, and opt-in live-provider test policy.
 
-Script content uses `ReadOnlyMemory<byte>` because ManageSieve literals are
-octet-counted and must not be altered by text conversion.
+## Repository Layout
+
+```text
+src/Transiever.ManageSieve/                 Packable library
+src/Transiever.ManageSieve.UnitTest/        Parser, serializer, session, and API tests
+src/Transiever.ManageSieve.IntegrationTest/ Docker-backed Dovecot/Pigeonhole tests
+src/Transiever.ManageSieve.LiveTest/        Explicitly enabled live-provider tests
+```
+
+## Feature Summary
+
+* Stateful async client API for the RFC 5804 command surface.
+* Streaming parser for fragmented responses, quoted strings, response codes, and byte-counted literals.
+* TCP, STARTTLS, and implicit TLS transport with platform certificate validation.
+* SASL authentication abstraction with PLAIN support.
+* Deterministic unit tests plus optional Docker and live-provider coverage.
 
 ## Example
 
@@ -42,62 +51,23 @@ IReadOnlyList<ManageSieveScriptInfo> scripts =
     await client.ListScriptsAsync();
 ```
 
-The default security mode is `StartTlsRequired` on port `4190`. Plaintext mode
-is explicit, and `ManageSievePlainAuthenticator` refuses to send credentials
-unless the connection is protected by TLS. Normal platform certificate
-validation is always used by the public client.
+The default security mode is `StartTlsRequired` on port `4190`.
+Plaintext mode is explicit, and `ManageSievePlainAuthenticator` refuses to send credentials unless the connection is protected by TLS.
+Normal platform certificate validation is always used by the public client.
 
-## Build and test
+## Development
 
 ```bash
 dotnet build Transiever.ManageSieve.slnx
 dotnet test Transiever.ManageSieve.slnx
 ```
 
-The solution has three test layers:
+Testing details live in [docs/testing.md](docs/testing.md).
 
-* `Transiever.ManageSieve.UnitTest` is deterministic and requires no network or Docker.
-* `Transiever.ManageSieve.IntegrationTest` builds a pinned Dovecot/Pigeonhole image with
-  Testcontainers. It is skipped when the Docker CLI or daemon is unavailable.
-* `Transiever.ManageSieve.LiveTest` is skipped unless explicitly enabled.
+## Publication Note
 
-Live-provider configuration is read only from environment variables:
+The current development build is consumed by sibling `Transiever.SieveRuler`
+through a temporary project reference.
+This must become a versioned package reference before independent publication.
 
-```text
-TRANSIEVER_LIVE_TESTS=true
-TRANSIEVER_LIVE_HOST=sieve.example.com
-TRANSIEVER_LIVE_PORT=4190
-TRANSIEVER_LIVE_USERNAME=user@example.com
-TRANSIEVER_LIVE_PASSWORD=secret
-TRANSIEVER_LIVE_SECURITY_MODE=StartTlsRequired
-```
-
-`TRANSIEVER_LIVE_PORT` and `TRANSIEVER_LIVE_SECURITY_MODE` are optional. Live
-tests are read-only by default. Guarded upload/rename/delete coverage requires
-the additional `TRANSIEVER_LIVE_WRITES=true` flag. Live tests never call
-`SETACTIVE`.
-
-Each live write test snapshots script names, active state, and content hashes,
-uses unique `transiever-test-{guid}` names, and deletes only inactive names it
-created after the snapshot. Existing scripts are never overwritten, renamed,
-activated, deactivated, or deleted. If cleanup fails, the test reports the
-exact temporary names for manual removal; broad prefix cleanup is intentionally
-not attempted.
-
-## Relationship to SieveRuler
-
-`Transiever.SieveRuler` uses this API to retrieve existing scripts, inspect server
-capabilities, validate candidates, upload staged scripts, and explicitly
-activate them.
-
-The current pre-publication integration uses a temporary sibling
-`ProjectReference`. The intended published dependency remains a versioned NuGet
-package.
-
-`Transiever.SieveRuler` remains responsible for parsing and preserving existing
-Sieve, reconciling rules, presenting previews, and deciding whether deployment
-is safe. `Transiever.OutlookResiever` is a source adapter above
-`Transiever.SieveRuler`. `Transiever.ManageSieve` owns only ManageSieve protocol
-behavior.
-
-See [AGENTS.md](AGENTS.md) for architecture and contribution guidance.
+See [AGENTS.md](AGENTS.md) for repository maintenance guidance.
