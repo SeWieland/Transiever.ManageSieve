@@ -1,5 +1,8 @@
 namespace Transiever.ManageSieve;
 
+/// <summary>
+/// Base exception for ManageSieve failures.
+/// </summary>
 public class ManageSieveException : Exception
 {
     public ManageSieveException(string message)
@@ -13,6 +16,9 @@ public class ManageSieveException : Exception
     }
 }
 
+/// <summary>
+/// Raised when the client cannot establish or keep a transport connection.
+/// </summary>
 public sealed class ManageSieveConnectionException : ManageSieveException
 {
     public ManageSieveConnectionException(string message)
@@ -26,6 +32,9 @@ public sealed class ManageSieveConnectionException : ManageSieveException
     }
 }
 
+/// <summary>
+/// Raised when SASL authentication fails.
+/// </summary>
 public sealed class ManageSieveAuthenticationException : ManageSieveException
 {
     public ManageSieveAuthenticationException(
@@ -39,6 +48,9 @@ public sealed class ManageSieveAuthenticationException : ManageSieveException
     public string? ResponseCode { get; }
 }
 
+/// <summary>
+/// Raised when the server sends malformed protocol data.
+/// </summary>
 public sealed class ManageSieveProtocolException : ManageSieveException
 {
     public ManageSieveProtocolException(string message)
@@ -52,6 +64,9 @@ public sealed class ManageSieveProtocolException : ManageSieveException
     }
 }
 
+/// <summary>
+/// Raised when a ManageSieve command fails.
+/// </summary>
 public sealed class ManageSieveCommandException : ManageSieveException
 {
     public ManageSieveCommandException(

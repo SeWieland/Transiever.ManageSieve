@@ -4,6 +4,9 @@ using System.Security.Cryptography;
 
 namespace Transiever.ManageSieve;
 
+/// <summary>
+/// Default ManageSieve protocol client.
+/// </summary>
 public sealed class ManageSieveClient : IManageSieveClient
 {
     private readonly IManageSieveTransportFactory transportFactory;

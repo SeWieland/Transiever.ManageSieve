@@ -1,5 +1,8 @@
 namespace Transiever.ManageSieve;
 
+/// <summary>
+/// Capabilities advertised by a ManageSieve server.
+/// </summary>
 public sealed record ManageSieveCapabilities
 {
     public string? Implementation { get; init; }
@@ -27,14 +30,23 @@ public sealed record ManageSieveCapabilities
         new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
 }
 
+/// <summary>
+/// Identifies a server-side script and whether it is active.
+/// </summary>
 public sealed record ManageSieveScriptInfo(
     string Name,
     bool IsActive);
 
+/// <summary>
+/// Represents a complete script retrieved from the server.
+/// </summary>
 public sealed record ManageSieveScript(
     string Name,
     ReadOnlyMemory<byte> Content);
 
+/// <summary>
+/// Result details returned from a ManageSieve command.
+/// </summary>
 public sealed record ManageSieveCommandResult
 {
     public string? Message { get; init; }
@@ -44,6 +56,9 @@ public sealed record ManageSieveCommandResult
     public IReadOnlyList<string> Warnings { get; init; } = [];
 }
 
+/// <summary>
+/// Indicates whether a server can accept a script upload of a given size.
+/// </summary>
 public sealed record ManageSieveSpaceAvailability
 {
     public required bool HasSpace { get; init; }

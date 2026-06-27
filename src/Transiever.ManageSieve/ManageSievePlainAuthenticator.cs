@@ -3,6 +3,9 @@ using System.Text;
 
 namespace Transiever.ManageSieve;
 
+/// <summary>
+/// SASL PLAIN authenticator for ManageSieve.
+/// </summary>
 public sealed class ManageSievePlainAuthenticator(
     string userName,
     string password,
