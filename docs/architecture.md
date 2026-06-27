@@ -33,7 +33,7 @@ Public asynchronous client API
 ```
 
 The TCP/TLS factory and transport are internal.
-Integration tests use `InternalsVisibleTo` to trust only the exact generated test certificate.
+Integration tests use `InternalsVisibleTo` to trust only the exact certificate presented by the disposable Dovecot test container.
 The public API must not expose certificate-validation overrides.
 
 ## Protocol Constraints

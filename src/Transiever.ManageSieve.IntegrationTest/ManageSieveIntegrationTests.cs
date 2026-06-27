@@ -14,7 +14,7 @@ public sealed class DovecotCollection : ICollectionFixture<DovecotFixture>
 public sealed class ManageSieveIntegrationTests(DovecotFixture fixture)
 {
     [DockerFact]
-    public async Task CompleteProtocolSurface_RoundTripsAgainstDovecot()
+    public async Task DovecotSupportedCommands_RoundTrip()
     {
         SkipWhenDockerIsUnavailable();
         string first = $"transiever-{Guid.NewGuid():N}";
@@ -27,6 +27,8 @@ public sealed class ManageSieveIntegrationTests(DovecotFixture fixture)
 
         await client.StartTlsAsync();
         Assert.Equal(ManageSieveSessionState.Secured, client.State);
+        Assert.NotNull(client.Capabilities);
+        Assert.Contains("PLAIN", client.Capabilities.SaslMechanisms);
 
         await client.AuthenticateAsync(
             new ManageSievePlainAuthenticator(
@@ -38,7 +40,7 @@ public sealed class ManageSieveIntegrationTests(DovecotFixture fixture)
         {
             ManageSieveCapabilities capabilities =
                 await client.RefreshCapabilitiesAsync();
-            Assert.Contains("PLAIN", capabilities.SaslMechanisms);
+            Assert.Empty(capabilities.SaslMechanisms);
 
             Assert.True((await client.HaveSpaceAsync(first, content.Length)).HasSpace);
             Assert.NotNull(await client.CheckScriptAsync(content));
@@ -65,8 +67,6 @@ public sealed class ManageSieveIntegrationTests(DovecotFixture fixture)
                 () => client.GetScriptAsync(renamed).AsTask());
 
             Assert.NotNull(await client.NoOpAsync("integration"));
-            await client.UnauthenticateAsync();
-            Assert.Equal(ManageSieveSessionState.Secured, client.State);
         }
         finally
         {

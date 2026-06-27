@@ -34,13 +34,13 @@ public sealed class DovecotFixture : IAsyncLifetime
                 .WithImage(image)
                 .WithPortBinding(4190, true)
                 .WithWaitStrategy(
-                    Wait.ForUnixContainer().UntilInternalTcpPortIsAvailable(4190))
+                    Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable(4190))
                 .WithCleanUp(true)
                 .Build();
             await container.StartAsync();
 
             ExecResult certificate = await container.ExecAsync(
-                ["sh", "-c", "base64 -w0 /etc/dovecot/private/transiever-test.crt"]);
+                ["sh", "-c", "base64 -w0 /etc/dovecot/cert.pem"]);
             using X509Certificate2 parsed =
                 X509Certificate2.CreateFromPem(
                     System.Text.Encoding.ASCII.GetString(

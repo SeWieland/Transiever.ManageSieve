@@ -48,7 +48,7 @@ Consumers own reconciliation and deployment policy.
 
 The public client always uses platform TLS validation.
 A certificate-validation injection point exists only as an internal test seam so disposable integration tests
-can trust their generated certificate without creating an accept-any-certificate public option.
+can trust the exact certificate presented by the test container without creating an accept-any-certificate public option.
 
 The initial `Transiever.SieveRuler` integration references this project directly until a versioned NuGet package is available.
-Its Docker integration test is granted internal access only to pin the generated test certificate.
+Its Docker integration test is granted internal access only to pin the test container certificate.

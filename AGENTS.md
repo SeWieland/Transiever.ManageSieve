@@ -63,6 +63,8 @@ dotnet test Transiever.ManageSieve.slnx
 
 Unit tests require no network.
 Docker-backed integration tests skip when Docker is unavailable.
+They build a pinned Dovecot/Pigeonhole image, use the image's bundled test certificate through the internal certificate-validation seam,
+and wait on the mapped host port rather than requiring extra socket tooling inside the container.
 Live-provider tests stay skipped unless explicitly enabled through environment variables.
 Testing policy lives in `docs/testing.md`.
 

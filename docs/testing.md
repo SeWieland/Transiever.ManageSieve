@@ -10,6 +10,9 @@ The architecture and protocol constraints live in [architecture](architecture.md
 It should cover parser, serializer, state-transition, authentication, timeout, cancellation, disposal, and public API behavior.
 
 `Transiever.ManageSieve.IntegrationTest` uses Testcontainers and a pinned Dovecot/Pigeonhole image. It skips when Docker is unavailable.
+The fixture waits for the mapped host port, pins the image's bundled test certificate through the internal certificate-validation seam,
+and covers the ManageSieve commands supported by that Dovecot/Pigeonhole build.
+Commands that the pinned server rejects, such as `UNAUTHENTICATE`, remain covered by deterministic client tests instead of the Docker round trip.
 
 `Transiever.ManageSieve.LiveTest` is skipped unless explicitly enabled.
 Live tests are for provider interoperability checks only and must remain non-destructive by default.
