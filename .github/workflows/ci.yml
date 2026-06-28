@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  pull_request:
+    branches: [main, dev]
+  push:
+    branches: [main, dev]
+
+permissions:
+  contents: read
+
+jobs:
+  build-test:
+    name: Build and test
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore Transiever.ManageSieve.slnx
+
+      - name: Build
+        run: dotnet build Transiever.ManageSieve.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test Transiever.ManageSieve.slnx --configuration Release --no-build

@@ -1,0 +1,61 @@
+name: Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  id-token: write
+  issues: write
+  pull-requests: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Semantic release
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev'
+    environment: release
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install release dependencies
+        run: npm install
+
+      - name: Restore
+        run: dotnet restore Transiever.ManageSieve.slnx
+
+      - name: Build
+        run: dotnet build Transiever.ManageSieve.slnx --configuration Release --no-restore
+
+      - name: Test
+        run: dotnet test Transiever.ManageSieve.slnx --configuration Release --no-build
+
+      - name: NuGet login
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ vars.NUGET_USER }}
+
+      - name: Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NUGET_API_KEY: ${{ steps.nuget-login.outputs.NUGET_API_KEY }}
+        run: npx semantic-release

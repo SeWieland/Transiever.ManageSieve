@@ -67,8 +67,10 @@ Testing details live in [docs/testing.md](docs/testing.md).
 
 ## Publication Note
 
-The current development build is consumed by sibling `Transiever.SieveRuler`
-through a temporary project reference.
-This must become a versioned package reference before independent publication.
+Releases are produced from GitHub Actions. Stable releases come from `main`;
+beta prereleases come from `dev` and may be unstable.
+
+The current development build is consumed by sibling `Transiever.SieveRuler` through a temporary project reference.
+SieveRuler must use a versioned package reference before its own independent publication.
 
 See [AGENTS.md](AGENTS.md) for repository maintenance guidance.

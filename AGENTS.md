@@ -68,6 +68,44 @@ and wait on the mapped host port rather than requiring extra socket tooling insi
 Live-provider tests stay skipped unless explicitly enabled through environment variables.
 Testing policy lives in `docs/testing.md`.
 
+## GitHub CI And Releases
+
+GitHub Actions are repository-local because this repository must publish and build independently from the umbrella workspace.
+
+`ci.yml` runs restore, Release build, and tests on pull requests and pushes to `main` and `dev`.
+Live-provider tests remain skipped unless their explicit environment variables are configured,
+and normal CI must never require live provider credentials.
+
+`pr-title.yml` validates pull request titles as Conventional Commits so squash merges can drive semantic-release versioning.
+
+`release.yml` is manual only.
+Run it from `main` for stable releases and from `dev` for `beta` prereleases.
+The first release is expected to start on `dev` and naturally produce `1.0.0-beta.1`; do not seed a `0.1.0` tag for release automation.
+
+Release publishing uses `semantic-release` and
+`@droidsolutions-oss/semantic-release-nuget` with `usePackageVersion: true`, so
+calculated versions are passed to `dotnet pack` without committing version
+changes back into project files.
+
+NuGet.org publishing uses trusted publishing through GitHub OIDC, not a
+long-lived NuGet API key. Do not add a `NUGET_TOKEN` secret for this workflow.
+Configure the GitHub repository variable `NUGET_USER` to the NuGet.org username
+or organization that owns `Transiever.ManageSieve`.
+
+The NuGet.org trusted publishing policy for this repository must match:
+
+```text
+Repository owner: <GitHub owner or organization>
+Repository: ManageSieve
+Workflow: release.yml
+Environment: release
+```
+
+The release workflow must keep `id-token: write`, `environment: release`, and
+the `NuGet/login@v1` step. That step exchanges the GitHub OIDC token for a
+temporary `NUGET_API_KEY`, which is passed to the semantic-release NuGet plugin
+through `tokenEnvVar: "NUGET_API_KEY"`.
+
 ## Repository Boundaries
 
 `Transiever.SieveRuler` consumes this library for remote inspection, validation,
