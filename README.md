@@ -1,16 +1,21 @@
 # Transiever.ManageSieve
 
-Cross-platform .NET library for inspecting and managing server-side Sieve scripts
-through the RFC 5804 ManageSieve protocol.
+Cross-platform .NET library for inspecting and managing server-side Sieve scripts through the RFC 5804 ManageSieve protocol.
 
-The client implements TCP and TLS transport, streaming response parsing, SASL authentication,
-session-state validation, timeouts, and the RFC 5804 command surface.
+The client implements these ManageSieve concerns:
+
+* TCP and TLS transport.
+* Streaming response parsing.
+* SASL authentication.
+* Session-state validation.
+* Timeouts.
+* The RFC 5804 command surface.
 
 ## Documentation Map
 
 Start here, then follow the focused guides:
 
-* [library guide](src/Transiever.ManageSieve/README.md) for the public API, script operations, and security behavior.
+* [library guide](src/Transiever.ManageSieve/README.md) for public API, script operations, and security behavior.
 * [architecture](docs/architecture.md) for protocol layering, parsing constraints, public API rules, and repository boundaries.
 * [testing](docs/testing.md) for unit, Docker-backed integration, and opt-in live-provider test policy.
 
@@ -53,7 +58,8 @@ IReadOnlyList<ManageSieveScriptInfo> scripts =
 ```
 
 The default security mode is `StartTlsRequired` on port `4190`.
-Plaintext mode is explicit, and `ManageSievePlainAuthenticator` refuses to send credentials unless the connection is protected by TLS.
+Plaintext mode is explicit.
+`ManageSievePlainAuthenticator` refuses to send credentials unless the connection is protected by TLS.
 Normal platform certificate validation is always used by the public client.
 
 ## Development
@@ -67,10 +73,10 @@ Testing details live in [docs/testing.md](docs/testing.md).
 
 ## Publication Note
 
-Releases are produced from GitHub Actions. Stable releases come from `main`;
-beta prereleases come from `dev` and may be unstable.
+GitHub Actions produce releases.
+Stable releases come from `main`.
+Beta prereleases come from `dev` and may be unstable.
 
-The current development build is consumed by sibling `Transiever.SieveRuler` through a temporary project reference.
-SieveRuler must use a versioned package reference before its own independent publication.
+`Transiever.SieveRuler` consumes this library through the published NuGet package.
 
 See [AGENTS.md](AGENTS.md) for repository maintenance guidance.

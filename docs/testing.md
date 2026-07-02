@@ -9,10 +9,13 @@ The architecture and protocol constraints live in [architecture](architecture.md
 `Transiever.ManageSieve.UnitTest` is deterministic and requires no network or Docker.
 It should cover parser, serializer, state-transition, authentication, timeout, cancellation, disposal, and public API behavior.
 
-`Transiever.ManageSieve.IntegrationTest` uses Testcontainers and a pinned Dovecot/Pigeonhole image. It skips when Docker is unavailable.
-The fixture waits for the mapped host port, pins the image's bundled test certificate through the internal certificate-validation seam,
-and covers the ManageSieve commands supported by that Dovecot/Pigeonhole build.
-Commands that the pinned server rejects, such as `UNAUTHENTICATE`, remain covered by deterministic client tests instead of the Docker round trip.
+`Transiever.ManageSieve.IntegrationTest` uses Testcontainers and a pinned Dovecot/Pigeonhole image.
+It skips when Docker is unavailable.
+The fixture waits for the mapped host port.
+It pins the image's bundled test certificate through the internal certificate-validation seam.
+It covers the ManageSieve commands supported by that Dovecot/Pigeonhole build.
+Commands that the pinned server rejects remain covered by deterministic client tests instead of the Docker round trip.
+`UNAUTHENTICATE` is one example.
 
 `Transiever.ManageSieve.LiveTest` is skipped unless explicitly enabled.
 Live tests are for provider interoperability checks only and must remain non-destructive by default.
@@ -21,15 +24,15 @@ Live tests are for provider interoperability checks only and must remain non-des
 
 Prioritize:
 
-* segmented in-memory parser input;
-* serializer escaping;
-* capability parsing;
-* fragmented responses, quoted strings, literals, response codes, and malformed input;
-* session-state transitions;
-* authentication challenge/response tests without real credentials;
-* cancellation, timeout, and disposal behavior;
-* script round trips containing ASCII, Unicode, CRLF, and large literals;
-* deterministic fake transport coverage for client-level tests.
+* Segmented in-memory parser input.
+* Serializer escaping.
+* Capability parsing.
+* Fragmented responses, quoted strings, literals, response codes, and malformed input.
+* Session-state transitions.
+* Authentication challenge/response tests without real credentials.
+* Cancellation, timeout, and disposal behavior.
+* Script round trips containing ASCII, Unicode, CRLF, and large literals.
+* Deterministic fake transport coverage for client-level tests.
 
 ## Live-Provider Configuration
 
