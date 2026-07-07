@@ -1,4 +1,3 @@
-using global::Transiever.ManageSieve;
 using System.Text;
 
 namespace Transiever.ManageSieve.UnitTest;
