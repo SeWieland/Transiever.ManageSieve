@@ -1,9 +1,6 @@
 # Transiever.ManageSieve Architecture
 
 This document is the canonical description of the ManageSieve protocol boundary, layering, public API rules, and security constraints.
-
-The root [README](../README.md) is the repo entry point.
-The library API summary lives in [../src/Transiever.ManageSieve/README.md](../src/Transiever.ManageSieve/README.md).
 Test policy lives in [testing](testing.md).
 
 ## System Boundary

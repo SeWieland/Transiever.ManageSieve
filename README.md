@@ -78,5 +78,3 @@ Stable releases come from `main`.
 Beta prereleases come from `dev` and may be unstable.
 
 `Transiever.SieveRuler` consumes this library through the published NuGet package.
-
-See [AGENTS.md](AGENTS.md) for repository maintenance guidance.
