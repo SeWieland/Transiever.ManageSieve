@@ -9,12 +9,20 @@ Test policy lives in [testing](testing.md).
 consumer application
     -> Transiever.ManageSieve
         -> RFC 5804 ManageSieve server
+
+operator
+    -> msieve
+        -> Transiever.ManageSieve
+            -> RFC 5804 ManageSieve server
 ```
 
 `Transiever.ManageSieve` owns protocol execution only.
 It does not parse or generate Sieve rules.
 It does not reconcile application-owned content.
 It does not optimize filters, discover mail accounts, or decide whether a candidate should be activated.
+The `msieve` CLI is a thin operator surface over the same protocol library.
+It exposes direct capabilities, script inspection, validation, upload, activation, deactivation, and delete operations.
+It does not add backups, rollback, history, reconciliation, Outlook import, provider metadata, Sieve generation, or credential storage.
 
 `Transiever.SieveRuler` consumes this library for remote inspection, validation, upload, activation, and rollback primitives.
 `Transiever.OutlookResiever` consumes SieveRuler and does not reference this library directly.
@@ -90,7 +98,7 @@ This repository does not provide:
 
 * A Sieve language compiler or rule generator.
 * IMAP, SMTP, or general mail-client behavior.
-* A CLI or GUI.
+* A GUI.
 * Automatic credential storage.
 * Provider-specific account discovery.
 * Connection pooling or command pipelining.

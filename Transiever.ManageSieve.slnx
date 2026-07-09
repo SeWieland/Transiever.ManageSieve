@@ -1,5 +1,7 @@
 <Solution>
   <Folder Name="/src/">
+    <Project Path="src/Transiever.ManageSieve.Cli.UnitTest/Transiever.ManageSieve.Cli.UnitTest.csproj" />
+    <Project Path="src/Transiever.ManageSieve.Cli/Transiever.ManageSieve.Cli.csproj" />
     <Project Path="src/Transiever.ManageSieve.IntegrationTest/Transiever.ManageSieve.IntegrationTest.csproj" />
     <Project Path="src/Transiever.ManageSieve.LiveTest/Transiever.ManageSieve.LiveTest.csproj" />
     <Project Path="src/Transiever.ManageSieve.UnitTest/Transiever.ManageSieve.UnitTest.csproj" />

@@ -2,11 +2,13 @@
 
 ## Project Boundary
 
-`Transiever.ManageSieve` is a cross-platform .NET protocol library for RFC 5804 ManageSieve.
+`Transiever.ManageSieve` is a cross-platform .NET protocol library for RFC 5804 ManageSieve with a tiny policy-neutral CLI.
 It owns streaming parsing, command serialization, TCP/TLS transport, SASL authentication, session-state validation, and structured command results.
 
 It must not reference Outlook, SieveRuler rule models, provider-specific policy, or any mail-client stack outside ManageSieve.
 Consumers own reconciliation and deployment policy.
+The `msieve` CLI exposes direct protocol operations only.
+It must not add reconciliation, backup, rollback, provider policy, Sieve generation, Outlook import, or credential storage.
 
 ## Agent Index
 
@@ -15,6 +17,8 @@ Transiever.ManageSieve.slnx
 docs/architecture.md
 docs/testing.md
 src/
+  Transiever.ManageSieve.Cli/
+  Transiever.ManageSieve.Cli.UnitTest/
   Transiever.ManageSieve/
   Transiever.ManageSieve.UnitTest/
   Transiever.ManageSieve.IntegrationTest/
@@ -29,6 +33,7 @@ Nullable reference types and implicit global usings are enabled.
 | Topic                                                                   | Owner                                  |
 | ----------------------------------------------------------------------- | -------------------------------------- |
 | Public API, script operations, and security behavior                    | `src/Transiever.ManageSieve/README.md` |
+| CLI commands, options, environment variables, and operator workflow     | `src/Transiever.ManageSieve.Cli/README.md` |
 | Protocol layering, parser constraints, API rules, and security defaults | `docs/architecture.md`                 |
 | Unit, Docker-backed integration, and live-provider test policy          | `docs/testing.md`                      |
 | Public overview, docs map, example, and development commands            | `README.md`                            |

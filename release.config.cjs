@@ -28,6 +28,33 @@ module.exports = {
         ]
       }
     ],
-    "@semantic-release/github"
+    [
+      "@semantic-release/exec",
+      {
+        prepareCmd: "bash .github/scripts/build-release-assets.sh ${nextRelease.version}"
+      }
+    ],
+    [
+      "@semantic-release/github",
+      {
+        assets: [
+          {
+            path: "artifacts/msieve-win-x64.zip",
+            name: "msieve-${nextRelease.gitTag}-win-x64.zip",
+            label: "msieve Windows x64"
+          },
+          {
+            path: "artifacts/msieve-win-x86.zip",
+            name: "msieve-${nextRelease.gitTag}-win-x86.zip",
+            label: "msieve Windows x86"
+          },
+          {
+            path: "artifacts/msieve-linux-x64.tar.gz",
+            name: "msieve-${nextRelease.gitTag}-linux-x64.tar.gz",
+            label: "msieve Linux x64"
+          }
+        ]
+      }
+    ]
   ]
 };
