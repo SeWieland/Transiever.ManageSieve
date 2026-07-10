@@ -12,6 +12,12 @@ scoop bucket add transiever https://github.com/SeWieland/Transiever.ScoopBucket
 scoop install transiever/msieve
 ```
 
+Install the self-contained Linux x64 build with Homebrew:
+
+```bash
+brew install SeWieland/transiever/msieve
+```
+
 The client implements these ManageSieve concerns:
 
 * TCP and TLS transport.
