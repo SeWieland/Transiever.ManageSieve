@@ -3,6 +3,15 @@
 Cross-platform .NET library for inspecting and managing server-side Sieve scripts through the RFC 5804 ManageSieve protocol.
 It also ships `msieve`, a tiny policy-neutral CLI for direct server inspection and basic script operations.
 
+## Install
+
+Install the self-contained Windows build with Scoop:
+
+```powershell
+scoop bucket add transiever https://github.com/SeWieland/Transiever.ScoopBucket
+scoop install transiever/msieve
+```
+
 The client implements these ManageSieve concerns:
 
 * TCP and TLS transport.
