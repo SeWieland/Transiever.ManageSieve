@@ -1,0 +1,76 @@
+version: 2
+
+updates:
+  - package-ecosystem: nuget
+    directories:
+      - /src/*
+    schedule:
+      interval: daily
+      time: '08:00'
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 1
+      exclude:
+        - Transiever.*
+    groups:
+      transiever-dependencies:
+        patterns:
+          - Transiever.*
+        update-types:
+          - patch
+          - minor
+      test-dependencies:
+        patterns:
+          - coverlet.collector
+          - Microsoft.NET.Test.Sdk
+          - Testcontainers
+          - xunit
+          - xunit.runner.visualstudio
+        update-types:
+          - patch
+          - minor
+      major-dependencies:
+        patterns:
+          - '*'
+        update-types:
+          - major
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: daily
+      time: '08:00'
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 1
+    groups:
+      release-tooling:
+        dependency-type: development
+        update-types:
+          - patch
+          - minor
+      major-dependencies:
+        patterns:
+          - '*'
+        update-types:
+          - major
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: daily
+      time: '08:00'
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 1
+    groups:
+      actions-minor-patch:
+        update-types:
+          - patch
+          - minor
+      actions-major:
+        update-types:
+          - major

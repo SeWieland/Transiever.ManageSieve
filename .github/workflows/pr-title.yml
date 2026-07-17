@@ -11,6 +11,7 @@ jobs:
   conventional-title:
     name: Conventional Commit title
     runs-on: ubuntu-latest
+    if: github.event.pull_request.user.login != 'dependabot[bot]' || startsWith(github.event.pull_request.title, 'chore(deps):')
 
     steps:
       - name: Validate PR title

@@ -2,6 +2,9 @@ name: Release
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '0 18 * * 1'
+      timezone: Europe/Berlin
 
 permissions:
   contents: write
@@ -37,7 +40,7 @@ jobs:
           node-version: 24
 
       - name: Install release dependencies
-        run: npm install
+        run: npm ci
 
       - name: Restore
         run: dotnet restore Transiever.ManageSieve.slnx

@@ -7,7 +7,12 @@ module.exports = {
   plugins: [
     [
       "@semantic-release/commit-analyzer",
-      { preset: "conventionalcommits" }
+      {
+        preset: "conventionalcommits",
+        releaseRules: [
+          { type: "chore", scope: "deps", release: "patch" }
+        ]
+      }
     ],
     [
       "@semantic-release/release-notes-generator",
