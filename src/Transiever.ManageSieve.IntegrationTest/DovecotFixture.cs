@@ -29,8 +29,7 @@ public sealed class DovecotFixture : IAsyncLifetime
                 .Build();
             await image.CreateAsync();
 
-            container = new ContainerBuilder()
-                .WithImage(image)
+            container = new ContainerBuilder(image)
                 .WithPortBinding(4190, true)
                 .WithWaitStrategy(
                     Wait.ForUnixContainer().UntilExternalTcpPortIsAvailable(4190))
