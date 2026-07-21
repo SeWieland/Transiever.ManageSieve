@@ -18,6 +18,14 @@ Install the self-contained Linux x64 build with Homebrew:
 brew install SeWieland/transiever/msieve
 ```
 
+Install as a global .NET tool:
+
+```bash
+dotnet tool install --global Transiever.ManageSieve.Cli
+```
+
+NuGet.org: [Transiever.ManageSieve](https://www.nuget.org/packages/Transiever.ManageSieve) and [Transiever.ManageSieve.Cli](https://www.nuget.org/packages/Transiever.ManageSieve.Cli).
+
 The client implements these ManageSieve concerns:
 
 * TCP and TLS transport.
