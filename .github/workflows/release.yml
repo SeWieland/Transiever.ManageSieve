@@ -146,7 +146,7 @@ jobs:
         run: ./artifacts/publish/${{ matrix.rid }}/msieve --help
 
       - name: Upload workflow artifact
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: release-${{ matrix.rid }}
           path: artifacts/msieve-${{ needs.select-tag.outputs.release_tag }}-${{ matrix.rid }}.${{ matrix.extension }}
@@ -163,7 +163,7 @@ jobs:
 
     steps:
       - name: Download workflow artifacts
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           pattern: release-*
           path: artifacts
