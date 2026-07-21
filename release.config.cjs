@@ -36,30 +36,10 @@ module.exports = {
     [
       "@semantic-release/exec",
       {
-        prepareCmd: "bash .github/scripts/build-release-assets.sh ${nextRelease.version}"
+        prepareCmd: "dotnet pack src/Transiever.ManageSieve.Cli/Transiever.ManageSieve.Cli.csproj --configuration Release -p:PackageVersion=${nextRelease.version} --output out",
+        successCmd: "if [ -n \"$GITHUB_OUTPUT\" ]; then echo \"release_tag=${nextRelease.gitTag}\" >> \"$GITHUB_OUTPUT\"; fi"
       }
     ],
-    [
-      "@semantic-release/github",
-      {
-        assets: [
-          {
-            path: "artifacts/msieve-win-x64.zip",
-            name: "msieve-${nextRelease.gitTag}-win-x64.zip",
-            label: "msieve Windows x64"
-          },
-          {
-            path: "artifacts/msieve-win-x86.zip",
-            name: "msieve-${nextRelease.gitTag}-win-x86.zip",
-            label: "msieve Windows x86"
-          },
-          {
-            path: "artifacts/msieve-linux-x64.tar.gz",
-            name: "msieve-${nextRelease.gitTag}-linux-x64.tar.gz",
-            label: "msieve Linux x64"
-          }
-        ]
-      }
-    ]
+    "@semantic-release/github"
   ]
 };

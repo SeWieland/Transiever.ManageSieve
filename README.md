@@ -97,6 +97,6 @@ Testing details live in [docs/testing.md](docs/testing.md).
 GitHub Actions produce releases.
 Stable releases come from `main`.
 Beta prereleases come from `dev` and may be unstable.
-Releases publish NuGet packages and attach self-contained `msieve` assets for `win-x64`, `win-x86`, and `linux-x64`.
+Releases publish NuGet packages and attach trimmed Native-AOT `msieve` assets for `win-x64`, `win-x86`, and `linux-x64`.
 
 `Transiever.SieveRuler` consumes this library through the published NuGet package.
