@@ -16,7 +16,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Normalize dependency PR title
-        if: startsWith(github.event.pull_request.title, 'chore(deps):') == false
+        if: startsWith(github.event.pull_request.title, 'chore(deps):') == false && startsWith(github.event.pull_request.title, 'chore(deps-dev):') == false
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_URL: ${{ github.event.pull_request.html_url }}
@@ -37,4 +37,4 @@ jobs:
           PR_TITLE: ${{ github.event.pull_request.title }}
         run: |
           gh pr review --approve "$PR_URL"
-          gh pr merge --auto --squash --subject "chore(deps): $PR_TITLE" "$PR_URL"
+          gh pr merge --auto --squash --subject "$PR_TITLE" "$PR_URL"
