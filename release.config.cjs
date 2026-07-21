@@ -26,7 +26,8 @@ module.exports = {
             { type: "perf", section: "Performance Improvements" },
             { type: "revert", section: "Reverts" },
             { type: "chore", scope: "deps", section: "Dependency Updates" },
-            { type: "chore", scope: "deps-dev", section: "Dependency Updates" }
+            { type: "chore", scope: "deps-dev", section: "Dependency Updates" },
+            { type: "chore", scope: "deps-ci", section: "Dependency Updates" }
           ]
         }
       }

@@ -3,7 +3,8 @@ version: 2
 updates:
   - package-ecosystem: nuget
     directories:
-      - /src/*
+      - /src/Transiever.ManageSieve
+      - /src/Transiever.ManageSieve.Cli
     schedule:
       interval: daily
       time: '08:00'
@@ -13,6 +14,8 @@ updates:
       default-days: 1
       exclude:
         - Transiever.*
+    commit-message:
+      prefix: chore(deps)
     groups:
       transiever-dependencies:
         patterns:
@@ -20,17 +23,35 @@ updates:
         update-types:
           - patch
           - minor
+      major-dependencies:
+        patterns:
+          - '*'
+        update-types:
+          - major
+
+  - package-ecosystem: nuget
+    directories:
+      - /src/Transiever.ManageSieve.UnitTest
+      - /src/Transiever.ManageSieve.Cli.UnitTest
+      - /src/Transiever.ManageSieve.IntegrationTest
+      - /src/Transiever.ManageSieve.LiveTest
+    schedule:
+      interval: daily
+      time: '08:00'
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 10
+    cooldown:
+      default-days: 1
+    commit-message:
+      prefix: chore(deps-ci)
+    groups:
       test-dependencies:
         patterns:
-          - coverlet.collector
-          - Microsoft.NET.Test.Sdk
-          - Testcontainers
-          - xunit
-          - xunit.runner.visualstudio
+          - '*'
         update-types:
           - patch
           - minor
-      major-dependencies:
+      test-major-dependencies:
         patterns:
           - '*'
         update-types:
@@ -45,6 +66,8 @@ updates:
     open-pull-requests-limit: 10
     cooldown:
       default-days: 1
+    commit-message:
+      prefix: chore(deps-ci)
     ignore:
       # Keep v9 until https://github.com/semantic-release/release-notes-generator/issues/992
       # is fixed in a release-notes-generator release.
@@ -72,6 +95,8 @@ updates:
     open-pull-requests-limit: 10
     cooldown:
       default-days: 1
+    commit-message:
+      prefix: chore(deps-ci)
     groups:
       actions-minor-patch:
         update-types:
