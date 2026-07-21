@@ -45,6 +45,12 @@ updates:
     open-pull-requests-limit: 10
     cooldown:
       default-days: 1
+    ignore:
+      # Keep v9 until https://github.com/semantic-release/release-notes-generator/issues/992
+      # is fixed in a release-notes-generator release.
+      - dependency-name: conventional-changelog-conventionalcommits
+        update-types:
+          - version-update:semver-major
     groups:
       release-tooling:
         dependency-type: development

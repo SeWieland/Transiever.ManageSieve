@@ -16,7 +16,20 @@ module.exports = {
     ],
     [
       "@semantic-release/release-notes-generator",
-      { preset: "conventionalcommits" }
+      {
+        preset: "conventionalcommits",
+        presetConfig: {
+          types: [
+            { type: "feat", section: "Features" },
+            { type: "feature", section: "Features" },
+            { type: "fix", section: "Bug Fixes" },
+            { type: "perf", section: "Performance Improvements" },
+            { type: "revert", section: "Reverts" },
+            { type: "chore", scope: "deps", section: "Dependency Updates" },
+            { type: "chore", scope: "deps-dev", section: "Dependency Updates" }
+          ]
+        }
+      }
     ],
     [
       "@droidsolutions-oss/semantic-release-nuget",
