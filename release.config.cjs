@@ -40,6 +40,6 @@ module.exports = {
         successCmd: "if [ -n \"$GITHUB_OUTPUT\" ]; then echo \"release_tag=${nextRelease.gitTag}\" >> \"$GITHUB_OUTPUT\"; fi"
       }
     ],
-    "@semantic-release/github"
+    ["@semantic-release/github", { draftRelease: true }]
   ]
 };
