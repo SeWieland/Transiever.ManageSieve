@@ -176,3 +176,31 @@ jobs:
         run: |
           gh release upload "$RELEASE_TAG" artifacts/* --clobber --repo "$GITHUB_REPOSITORY"
           gh release edit "$RELEASE_TAG" --draft=false --repo "$GITHUB_REPOSITORY"
+
+  update-homebrew:
+    name: Update Homebrew formula
+    runs-on: ubuntu-latest
+    needs: [release, select-tag, attach-assets]
+    if: >-
+      always() &&
+      needs.attach-assets.result == 'success' &&
+      needs.release.outputs.release_tag != '' &&
+      !contains(needs.release.outputs.release_tag, '-')
+    permissions:
+      contents: read
+
+    steps:
+      - name: Update msieve formula
+        uses: mislav/bump-homebrew-formula-action@f865c8b0dbebd6e263cc06782a0e974c61cf12d2 # v4.2
+        with:
+          formula-name: msieve
+          formula-path: Formula/msieve.rb
+          homebrew-tap: SeWieland/homebrew-transiever
+          base-branch: main
+          tag-name: ${{ needs.select-tag.outputs.release_tag }}
+          download-url: https://github.com/SeWieland/Transiever.ManageSieve/releases/download/${{ needs.select-tag.outputs.release_tag }}/msieve-${{ needs.select-tag.outputs.release_tag }}-linux-x64.tar.gz
+          create-pullrequest: true
+        env:
+          # Fine-grained PAT restricted to the Homebrew tap with Contents and Pull requests write access.
+          COMMITTER_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
