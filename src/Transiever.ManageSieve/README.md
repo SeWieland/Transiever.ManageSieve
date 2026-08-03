@@ -11,6 +11,15 @@ The protocol reader handles these response details:
 * Capability data.
 * `OK`, `NO`, and `BYE` completion responses.
 
+## Install
+
+```bash
+dotnet add package Transiever.ManageSieve
+```
+
+The package is available on [NuGet.org](https://www.nuget.org/packages/Transiever.ManageSieve).
+For a human-oriented overview and tool picker, see the [Transiever ManageSieve guide](https://sewieland.github.io/transiever/dotnet-managesieve-client/).
+
 ## Main contracts
 
 * `IManageSieveClient` represents one stateful ManageSieve session.

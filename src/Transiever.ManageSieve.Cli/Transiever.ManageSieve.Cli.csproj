@@ -11,9 +11,11 @@
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>msieve</ToolCommandName>
     <PackageId>Transiever.ManageSieve.Cli</PackageId>
-    <Description>Command-line interface for Transiever.ManageSieve.</Description>
-    <PackageTags>managesieve;sieve;email;cli;tool</PackageTags>
+    <Description>Cross-platform .NET CLI and global tool for RFC 5804 ManageSieve and server-side Sieve scripts.</Description>
+    <PackageTags>transiever;managesieve;rfc5804;sieve;email-filtering;mail-filtering;dotnet;csharp;cli;tool;dotnet-tool</PackageTags>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageProjectUrl>https://sewieland.github.io/transiever/managesieve-cli/</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/SeWieland/Transiever.ManageSieve</RepositoryUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <RepositoryType>git</RepositoryType>

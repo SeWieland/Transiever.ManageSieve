@@ -11,9 +11,11 @@
 
   <PropertyGroup>
     <Title>Transiever.ManageSieve</Title>
-    <Description>A .NET-native client library for the ManageSieve protocol.</Description>
-    <PackageTags>managesieve;sieve;email</PackageTags>
+    <Description>Async .NET 10 client library for RFC 5804 ManageSieve and secure server-side Sieve script operations.</Description>
+    <PackageTags>transiever;managesieve;rfc5804;sieve;email-filtering;mail-filtering;dotnet;csharp;tls;sasl</PackageTags>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageProjectUrl>https://sewieland.github.io/transiever/dotnet-managesieve-client/</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/SeWieland/Transiever.ManageSieve</RepositoryUrl>
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>

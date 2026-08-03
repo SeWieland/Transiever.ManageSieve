@@ -4,6 +4,15 @@ This guide is the canonical command reference for the ManageSieve CLI.
 Repository overview lives in [../../README.md](../../README.md).
 Library API details live in [../Transiever.ManageSieve/README.md](../Transiever.ManageSieve/README.md).
 
+## Install
+
+```bash
+dotnet tool install --global Transiever.ManageSieve.Cli
+```
+
+The global-tool package is available on [NuGet.org](https://www.nuget.org/packages/Transiever.ManageSieve.Cli).
+For a tool-selection guide and self-contained installation options, see the [Transiever ManageSieve CLI guide](https://sewieland.github.io/transiever/managesieve-cli/).
+
 Commands:
 
 ```bash
