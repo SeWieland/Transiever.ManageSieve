@@ -1,8 +1,7 @@
 # `msieve`
 
 This guide is the canonical command reference for the ManageSieve CLI.
-Repository overview lives in [../../README.md](../../README.md).
-Library API details live in [../Transiever.ManageSieve/README.md](../Transiever.ManageSieve/README.md).
+See the [ManageSieve project overview](https://github.com/SeWieland/Transiever.ManageSieve#readme) and [ManageSieve library guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/src/Transiever.ManageSieve/README.md) for the public client API.
 
 ## Install
 

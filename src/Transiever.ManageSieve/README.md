@@ -31,8 +31,7 @@ For a human-oriented overview and tool picker, see the [Transiever ManageSieve g
 * `ManageSievePlainAuthenticator` provides SASL PLAIN and is rejected on an unsecured connection.
 * Typed exceptions distinguish connection, authentication, protocol, and command failures.
 
-Architecture and protocol constraints are documented in [../../docs/architecture.md](../../docs/architecture.md).
-Testing policy is documented in [../../docs/testing.md](../../docs/testing.md).
+See the [architecture guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/architecture.md) for protocol constraints and the [testing guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/testing.md) for test policy.
 
 ## Script operations
 
