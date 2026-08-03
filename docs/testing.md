@@ -36,18 +36,21 @@ Prioritize:
 
 ## Live-Provider Configuration
 
-Live-provider configuration is read only from environment variables:
+Set `TRANSIEVER_LIVE_TESTS=true` to enable live-provider tests.
+Connection settings fall back to the shared [`TRANSIEVER_SIEVE_*` server configuration](../src/Transiever.ManageSieve.Cli/README.md#server-configuration).
+`TRANSIEVER_LIVE_HOST`, `TRANSIEVER_LIVE_PORT`, `TRANSIEVER_LIVE_USERNAME`, `TRANSIEVER_LIVE_PASSWORD`, and `TRANSIEVER_LIVE_SECURITY_MODE` optionally override their corresponding shared values for a dedicated live-test account.
+Values are literal; `$TRANSIEVER_SIEVE_HOST` is not expanded.
 
 ```text
 TRANSIEVER_LIVE_TESTS=true
-TRANSIEVER_LIVE_HOST=sieve.example.com
-TRANSIEVER_LIVE_PORT=4190
-TRANSIEVER_LIVE_USERNAME=user@example.com
-TRANSIEVER_LIVE_PASSWORD=secret
-TRANSIEVER_LIVE_SECURITY_MODE=StartTlsRequired
+TRANSIEVER_SIEVE_HOST=sieve.example.com
+TRANSIEVER_SIEVE_PORT=4190
+TRANSIEVER_SIEVE_USERNAME=user@example.com
+TRANSIEVER_SIEVE_PASSWORD=secret
+TRANSIEVER_SIEVE_SECURITY_MODE=StartTlsRequired
 ```
 
-`TRANSIEVER_LIVE_PORT` and `TRANSIEVER_LIVE_SECURITY_MODE` are optional.
+`TRANSIEVER_SIEVE_PORT` and `TRANSIEVER_SIEVE_SECURITY_MODE` are optional.
 
 Live tests are read-only by default.
 Guarded upload, rename, and delete coverage additionally requires:

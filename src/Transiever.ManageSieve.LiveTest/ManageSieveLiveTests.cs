@@ -8,7 +8,7 @@ public sealed class ManageSieveLiveTests
     [LiveFact]
     public async Task ReadOnlyProtocolSurface()
     {
-        LiveConfiguration configuration = LiveConfiguration.Load(writeRequired: false);
+        LiveConfiguration configuration = LiveConfiguration.Load();
         await using IManageSieveClient client = await ConnectAsync(configuration);
 
         ManageSieveCapabilities capabilities = await client.RefreshCapabilitiesAsync();
@@ -33,7 +33,7 @@ public sealed class ManageSieveLiveTests
     [LiveFact(writes: true)]
     public async Task GuardedWriteSurface_DoesNotTouchExistingScripts()
     {
-        LiveConfiguration configuration = LiveConfiguration.Load(writeRequired: true);
+        LiveConfiguration configuration = LiveConfiguration.Load();
         await using IManageSieveClient client = await ConnectAsync(configuration);
         IReadOnlyList<ScriptSnapshot> initial = await SnapshotAsync(client);
         HashSet<string> initialNames =
@@ -99,6 +99,55 @@ public sealed class ManageSieveLiveTests
         Assert.Equal(initial.OrderBy(item => item.Name), after.OrderBy(item => item.Name));
     }
 
+    [Fact]
+    public void LiveConfigurationUsesSharedSieveSettingsWhenOverridesAreAbsent()
+    {
+        var environment = new Dictionary<string, string?>
+        {
+            ["TRANSIEVER_SIEVE_HOST"] = "sieve.example.com",
+            ["TRANSIEVER_SIEVE_PORT"] = "4191",
+            ["TRANSIEVER_SIEVE_USERNAME"] = "user@example.com",
+            ["TRANSIEVER_SIEVE_PASSWORD"] = "secret",
+            ["TRANSIEVER_SIEVE_SECURITY_MODE"] = "ImplicitTls"
+        };
+
+        Assert.Equal(
+            new LiveConfiguration(
+                "sieve.example.com",
+                4191,
+                "user@example.com",
+                "secret",
+                ManageSieveSecurityMode.ImplicitTls),
+            LiveConfiguration.Load(ReadEnvironment(environment)));
+    }
+
+    [Fact]
+    public void LiveConfigurationPrefersLiveOverrides()
+    {
+        var environment = new Dictionary<string, string?>
+        {
+            ["TRANSIEVER_SIEVE_HOST"] = "shared.example.com",
+            ["TRANSIEVER_SIEVE_PORT"] = "4190",
+            ["TRANSIEVER_SIEVE_USERNAME"] = "shared@example.com",
+            ["TRANSIEVER_SIEVE_PASSWORD"] = "shared-secret",
+            ["TRANSIEVER_SIEVE_SECURITY_MODE"] = "StartTlsRequired",
+            ["TRANSIEVER_LIVE_HOST"] = "live.example.com",
+            ["TRANSIEVER_LIVE_PORT"] = "4191",
+            ["TRANSIEVER_LIVE_USERNAME"] = "live@example.com",
+            ["TRANSIEVER_LIVE_PASSWORD"] = "live-secret",
+            ["TRANSIEVER_LIVE_SECURITY_MODE"] = "ImplicitTls"
+        };
+
+        Assert.Equal(
+            new LiveConfiguration(
+                "live.example.com",
+                4191,
+                "live@example.com",
+                "live-secret",
+                ManageSieveSecurityMode.ImplicitTls),
+            LiveConfiguration.Load(ReadEnvironment(environment)));
+    }
+
     private static async Task<IManageSieveClient> ConnectAsync(
         LiveConfiguration configuration)
     {
@@ -140,6 +189,10 @@ public sealed class ManageSieveLiveTests
         return snapshots;
     }
 
+    private static Func<string, string?> ReadEnvironment(
+        IReadOnlyDictionary<string, string?> environment) =>
+        name => environment.TryGetValue(name, out string? value) ? value : null;
+
     private sealed record ScriptSnapshot(string Name, bool IsActive, string ContentHash);
 
     private sealed record LiveConfiguration(
@@ -149,18 +202,22 @@ public sealed class ManageSieveLiveTests
         string Password,
         ManageSieveSecurityMode SecurityMode)
     {
-        public static LiveConfiguration Load(bool writeRequired)
+        public static LiveConfiguration Load() =>
+            Load(Environment.GetEnvironmentVariable);
+
+        public static LiveConfiguration Load(
+            Func<string, string?> readEnvironment)
         {
-            string host = Required("TRANSIEVER_LIVE_HOST");
-            string userName = Required("TRANSIEVER_LIVE_USERNAME");
-            string password = Required("TRANSIEVER_LIVE_PASSWORD");
+            string host = Required("HOST", readEnvironment);
+            string userName = Required("USERNAME", readEnvironment);
+            string password = Required("PASSWORD", readEnvironment);
             int port = int.TryParse(
-                Environment.GetEnvironmentVariable("TRANSIEVER_LIVE_PORT"),
+                Read("PORT", readEnvironment),
                 out int configuredPort)
                 ? configuredPort
                 : ManageSieveClientOptions.DefaultPort;
             ManageSieveSecurityMode securityMode = Enum.TryParse(
-                Environment.GetEnvironmentVariable("TRANSIEVER_LIVE_SECURITY_MODE"),
+                Read("SECURITY_MODE", readEnvironment),
                 ignoreCase: true,
                 out ManageSieveSecurityMode configuredMode)
                 ? configuredMode
@@ -174,11 +231,21 @@ public sealed class ManageSieveLiveTests
                 securityMode);
         }
 
-        private static string Required(string name) =>
-            Environment.GetEnvironmentVariable(name) is { Length: > 0 } value
+        private static string Required(
+            string suffix,
+            Func<string, string?> readEnvironment) =>
+            Read(suffix, readEnvironment) is { Length: > 0 } value
                 ? value
                 : throw new XunitException(
-                    $"Environment variable {name} is required for live tests.");
+                    $"Environment variable TRANSIEVER_LIVE_{suffix} or " +
+                    $"TRANSIEVER_SIEVE_{suffix} is required for live tests.");
+
+        private static string? Read(
+            string suffix,
+            Func<string, string?> readEnvironment) =>
+            readEnvironment($"TRANSIEVER_LIVE_{suffix}") is { Length: > 0 } value
+                ? value
+                : readEnvironment($"TRANSIEVER_SIEVE_{suffix}");
     }
 }
 
