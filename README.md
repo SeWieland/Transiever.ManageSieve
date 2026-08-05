@@ -1,7 +1,8 @@
 # Transiever.ManageSieve
 
-Cross-platform .NET library for inspecting and managing server-side Sieve scripts through the RFC 5804 ManageSieve protocol.
+Async-first cross-platform .NET 10 and C# library for inspecting and managing server-side Sieve scripts through the RFC 5804 ManageSieve protocol.
 It also ships `msieve`, a tiny policy-neutral CLI for direct server inspection and basic script operations.
+Automated integration tests exercise supported commands against a pinned Dovecot/Pigeonhole server image.
 
 ## Install
 
