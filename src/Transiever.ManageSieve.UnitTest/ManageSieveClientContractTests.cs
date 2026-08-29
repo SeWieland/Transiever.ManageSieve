@@ -37,11 +37,12 @@ public sealed class ManageSieveClientContractTests
         var client = CreateClient(
             securityMode: ManageSieveSecurityMode.PlainText,
             transport: transport);
-        await client.ConnectAsync();
+        await client.ConnectAsync(TestContext.Current.CancellationToken);
 
         await Assert.ThrowsAsync<InvalidOperationException>(
             () => client.AuthenticateAsync(
-                new ManageSievePlainAuthenticator("user", "secret")).AsTask());
+                new ManageSievePlainAuthenticator("user", "secret"),
+                TestContext.Current.CancellationToken).AsTask());
     }
 
     [Fact]
@@ -61,18 +62,19 @@ public sealed class ManageSieveClientContractTests
         var transport = new ScriptedTransport(responses);
         var client = CreateClient(transport: transport);
 
-        await client.ConnectAsync();
+        await client.ConnectAsync(TestContext.Current.CancellationToken);
         Assert.Equal(ManageSieveSessionState.Connected, client.State);
 
-        await client.StartTlsAsync();
+        await client.StartTlsAsync(TestContext.Current.CancellationToken);
         Assert.Equal(ManageSieveSessionState.Secured, client.State);
         Assert.Equal("test tls", client.Capabilities?.Implementation);
 
         await client.AuthenticateAsync(
-            new ManageSievePlainAuthenticator("user", "secret"));
+            new ManageSievePlainAuthenticator("user", "secret"),
+            TestContext.Current.CancellationToken);
         Assert.Equal(ManageSieveSessionState.Authenticated, client.State);
 
-        await client.LogoutAsync();
+        await client.LogoutAsync(TestContext.Current.CancellationToken);
         Assert.Equal(ManageSieveSessionState.Closed, client.State);
 
         string commands = Encoding.ASCII.GetString(transport.Written);
@@ -98,13 +100,18 @@ public sealed class ManageSieveClientContractTests
             securityMode: ManageSieveSecurityMode.ImplicitTls,
             transport: transport);
 
-        await client.ConnectAsync();
-        await client.AuthenticateAsync(new TestAuthenticator());
+        await client.ConnectAsync(TestContext.Current.CancellationToken);
+        await client.AuthenticateAsync(
+            new TestAuthenticator(), TestContext.Current.CancellationToken);
 
-        IReadOnlyList<ManageSieveScriptInfo> scripts = await client.ListScriptsAsync();
-        ManageSieveScript downloaded = await client.GetScriptAsync("two");
-        ManageSieveSpaceAvailability space = await client.HaveSpaceAsync("new", 100);
-        ManageSieveCommandResult validation = await client.CheckScriptAsync(script);
+        IReadOnlyList<ManageSieveScriptInfo> scripts = await client.ListScriptsAsync(
+            TestContext.Current.CancellationToken);
+        ManageSieveScript downloaded = await client.GetScriptAsync(
+            "two", TestContext.Current.CancellationToken);
+        ManageSieveSpaceAvailability space = await client.HaveSpaceAsync(
+            "new", 100, TestContext.Current.CancellationToken);
+        ManageSieveCommandResult validation = await client.CheckScriptAsync(
+            script, TestContext.Current.CancellationToken);
 
         Assert.Collection(
             scripts,
@@ -130,9 +137,10 @@ public sealed class ManageSieveClientContractTests
         var client = CreateClient(
             securityMode: ManageSieveSecurityMode.ImplicitTls,
             transport: transport);
-        await client.ConnectAsync();
+        await client.ConnectAsync(TestContext.Current.CancellationToken);
 
-        await client.AuthenticateAsync(authenticator);
+        await client.AuthenticateAsync(
+            authenticator, TestContext.Current.CancellationToken);
 
         Assert.Equal("challenge"u8.ToArray(), authenticator.Challenge);
         Assert.Equal("authenticated", client.Capabilities?.Implementation);
@@ -150,10 +158,11 @@ public sealed class ManageSieveClientContractTests
         var client = CreateClient(
             operationTimeout: TimeSpan.FromMilliseconds(20),
             transport: transport);
-        await client.ConnectAsync();
+        await client.ConnectAsync(TestContext.Current.CancellationToken);
 
         await Assert.ThrowsAsync<TimeoutException>(
-            () => client.NoOpAsync().AsTask());
+            () => client.NoOpAsync(
+                cancellationToken: TestContext.Current.CancellationToken).AsTask());
 
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
@@ -171,7 +180,8 @@ public sealed class ManageSieveClientContractTests
 
         Assert.Equal(ManageSieveSessionState.Closed, client.State);
         await Assert.ThrowsAsync<ObjectDisposedException>(
-            () => client.ConnectAsync().AsTask());
+            () => client.ConnectAsync(
+                TestContext.Current.CancellationToken).AsTask());
     }
 
     private static ManageSieveClient CreateClient(

@@ -251,7 +251,11 @@ public sealed class ManageSieveLiveTests
 
 internal sealed class LiveFactAttribute : FactAttribute
 {
-    public LiveFactAttribute(bool writes = false)
+    public LiveFactAttribute(
+        bool writes = false,
+        [System.Runtime.CompilerServices.CallerFilePath] string? sourceFilePath = null,
+        [System.Runtime.CompilerServices.CallerLineNumber] int sourceLineNumber = -1)
+        : base(sourceFilePath, sourceLineNumber)
     {
         if (!Enabled("TRANSIEVER_LIVE_TESTS"))
         {

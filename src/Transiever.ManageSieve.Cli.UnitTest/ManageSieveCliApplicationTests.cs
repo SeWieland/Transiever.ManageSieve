@@ -27,7 +27,8 @@ public sealed class ManageSieveCliApplicationTests
         TestApplication app = CreateApplication(client);
 
         int exitCode = await app.Application.RunAsync(
-            CommandLineOptions.Parse(["capabilities"]));
+            CommandLineOptions.Parse(["capabilities"]),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(0, exitCode);
         Assert.True(client.Connected);
@@ -51,7 +52,8 @@ public sealed class ManageSieveCliApplicationTests
         TestApplication app = CreateApplication(client);
 
         int exitCode = await app.Application.RunAsync(
-            CommandLineOptions.Parse(["list"]));
+            CommandLineOptions.Parse(["list"]),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(0, exitCode);
         Assert.True(client.Authenticated);
@@ -70,7 +72,8 @@ public sealed class ManageSieveCliApplicationTests
         TestApplication app = CreateApplication(client);
 
         int exitCode = await app.Application.RunAsync(
-            CommandLineOptions.Parse(["get", "active"]));
+            CommandLineOptions.Parse(["get", "active"]),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(0, exitCode);
         Assert.Equal(content, app.RawOutput.ToArray());
@@ -91,10 +94,14 @@ public sealed class ManageSieveCliApplicationTests
         {
             int exitCode = await app.Application.RunAsync(
                 CommandLineOptions.Parse(
-                    ["get", "active", "--output", outputFile]));
+                    ["get", "active", "--output", outputFile]),
+                TestContext.Current.CancellationToken);
 
             Assert.Equal(0, exitCode);
-            Assert.Equal(content, await File.ReadAllBytesAsync(outputFile));
+            Assert.Equal(
+                content,
+                await File.ReadAllBytesAsync(
+                    outputFile, TestContext.Current.CancellationToken));
         }
         finally
         {
@@ -110,14 +117,16 @@ public sealed class ManageSieveCliApplicationTests
     {
         byte[] content = [0, 1, 13, 10, 195, 164];
         string inputFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.sieve");
-        await File.WriteAllBytesAsync(inputFile, content);
+        await File.WriteAllBytesAsync(
+            inputFile, content, TestContext.Current.CancellationToken);
         var client = new FakeManageSieveClient();
         TestApplication app = CreateApplication(client);
 
         try
         {
             int exitCode = await app.Application.RunAsync(
-                CommandLineOptions.Parse(["check", "--file", inputFile]));
+                CommandLineOptions.Parse(["check", "--file", inputFile]),
+                TestContext.Current.CancellationToken);
 
             Assert.Equal(0, exitCode);
             Assert.Equal(content, client.CheckedContent);
@@ -134,7 +143,8 @@ public sealed class ManageSieveCliApplicationTests
     {
         byte[] content = Encoding.UTF8.GetBytes("# candidate\r\nkeep;\r\n");
         string inputFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.sieve");
-        await File.WriteAllBytesAsync(inputFile, content);
+        await File.WriteAllBytesAsync(
+            inputFile, content, TestContext.Current.CancellationToken);
         var client = new FakeManageSieveClient();
         TestApplication app = CreateApplication(client);
 
@@ -142,7 +152,8 @@ public sealed class ManageSieveCliApplicationTests
         {
             int exitCode = await app.Application.RunAsync(
                 CommandLineOptions.Parse(
-                    ["put", "candidate", "--file", inputFile, "--activate"]));
+                    ["put", "candidate", "--file", inputFile, "--activate"]),
+                TestContext.Current.CancellationToken);
 
             Assert.Equal(0, exitCode);
             Assert.Equal("candidate", client.PutScriptName);
@@ -166,7 +177,8 @@ public sealed class ManageSieveCliApplicationTests
         TestApplication app = CreateApplication(client);
 
         int exitCode = await app.Application.RunAsync(
-            CommandLineOptions.Parse([command, scriptName]));
+            CommandLineOptions.Parse([command, scriptName]),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(0, exitCode);
         if (command == "activate")
@@ -186,7 +198,8 @@ public sealed class ManageSieveCliApplicationTests
         TestApplication app = CreateApplication(client);
 
         int exitCode = await app.Application.RunAsync(
-            CommandLineOptions.Parse(["deactivate"]));
+            CommandLineOptions.Parse(["deactivate"]),
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(0, exitCode);
         Assert.Null(client.ActiveScriptName);

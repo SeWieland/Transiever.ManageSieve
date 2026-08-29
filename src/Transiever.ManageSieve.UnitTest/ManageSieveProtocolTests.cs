@@ -14,7 +14,8 @@ public sealed class ManageSieveProtocolTests
                 "\"STARTTLS\"\r\n" +
                 "OK (WARNINGS) \"ready\"\r\n"));
 
-        ManageSieveResponse response = await reader.ReadResponseAsync(default);
+        ManageSieveResponse response = await reader.ReadResponseAsync(
+            TestContext.Current.CancellationToken);
         ManageSieveCapabilities capabilities =
             ManageSieveProtocolMapper.MapCapabilities(response.Data);
 
@@ -36,7 +37,8 @@ public sealed class ManageSieveProtocolTests
             .ToArray();
         var reader = new ManageSieveProtocolReader(new FragmentedStream(response));
 
-        ManageSieveResponse parsed = await reader.ReadResponseAsync(default);
+        ManageSieveResponse parsed = await reader.ReadResponseAsync(
+            TestContext.Current.CancellationToken);
 
         Assert.Equal(literal, parsed.Data[0].Values[0].Bytes.ToArray());
     }
@@ -51,7 +53,8 @@ public sealed class ManageSieveProtocolTests
         var reader = new ManageSieveProtocolReader(new FragmentedStream(response));
 
         await Assert.ThrowsAsync<ManageSieveProtocolException>(
-            () => reader.ReadResponseAsync(default).AsTask());
+            () => reader.ReadResponseAsync(
+                TestContext.Current.CancellationToken).AsTask());
     }
 
     [Fact]

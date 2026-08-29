@@ -110,7 +110,10 @@ public sealed class ManageSieveIntegrationTests(DovecotFixture fixture)
 
 internal sealed class DockerFactAttribute : FactAttribute
 {
-    public DockerFactAttribute()
+    public DockerFactAttribute(
+        [System.Runtime.CompilerServices.CallerFilePath] string? sourceFilePath = null,
+        [System.Runtime.CompilerServices.CallerLineNumber] int sourceLineNumber = -1)
+        : base(sourceFilePath, sourceLineNumber)
     {
         try
         {

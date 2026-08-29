@@ -16,7 +16,7 @@ public sealed class DovecotFixture : IAsyncLifetime
 
     public string? UnavailableReason { get; private set; }
 
-    public async Task InitializeAsync()
+    public async ValueTask InitializeAsync()
     {
         try
         {
@@ -73,7 +73,7 @@ public sealed class DovecotFixture : IAsyncLifetime
             new TcpManageSieveTransportFactory(ValidateCertificate));
     }
 
-    public async Task DisposeAsync()
+    public async ValueTask DisposeAsync()
     {
         if (container is not null)
         {
