@@ -8,6 +8,8 @@ The architecture and protocol constraints live in [architecture](architecture.md
 
 `Transiever.ManageSieve.UnitTest` is deterministic and requires no network or Docker.
 It should cover parser, serializer, state-transition, authentication, timeout, cancellation, disposal, and public API behavior.
+The reusable internal `SaslConformanceHarness` supplies scripted fragmented streams and transports for offline authentication tests.
+It records exact wire bytes and non-secret buffer observations without contacting a server or requiring credentials.
 
 `Transiever.ManageSieve.IntegrationTest` uses Testcontainers and a pinned Dovecot/Pigeonhole image.
 It skips when Docker is unavailable.
@@ -30,6 +32,8 @@ Prioritize:
 * Fragmented responses, quoted strings, literals, response codes, and malformed input.
 * Session-state transitions.
 * Authentication challenge/response tests without real credentials.
+* Authentication lifecycle ownership, completion with and without server-final data, synchronized `NO` preservation,
+  indeterminate-disconnect cleanup, fixed diagnostics, and absence of wire-level SASL cancellation.
 * Cancellation, timeout, and disposal behavior.
 * Script round trips containing ASCII, Unicode, CRLF, and large literals.
 * Deterministic fake transport coverage for client-level tests.
@@ -70,3 +74,8 @@ Existing scripts are never overwritten, renamed, activated, deactivated, or dele
 
 If cleanup fails, the test reports the exact temporary names for manual removal.
 Broad prefix cleanup is intentionally not attempted.
+
+Authentication cleanup has the same narrow guarantee: `Abort` is local and must not attempt wire-level recovery.
+An indeterminate exchange closes the transport; if `Abort` throws, the client reports cleanup failure and also closes the transport.
+Buffer clearing is best effort and cannot guarantee erasure from immutable strings, GC/runtime copies,
+framework, operating-system, or transport buffers, captured wire copies, or server memory.
