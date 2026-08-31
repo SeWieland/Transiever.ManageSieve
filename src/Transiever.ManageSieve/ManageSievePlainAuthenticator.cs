@@ -12,24 +12,35 @@ public sealed class ManageSievePlainAuthenticator(
     string? authorizationIdentity = null)
     : IManageSieveAuthenticator
 {
+    private byte[]? response;
+
     public string Mechanism => "PLAIN";
 
     public ValueTask<ReadOnlyMemory<byte>?> GetInitialResponseAsync(
         CancellationToken cancellationToken = default)
     {
         cancellationToken.ThrowIfCancellationRequested();
+        ClearResponse();
         byte[] authenticationIdentity = Encoding.UTF8.GetBytes(userName);
         byte[] secret = Encoding.UTF8.GetBytes(password);
         byte[] authorization = Encoding.UTF8.GetBytes(authorizationIdentity ?? string.Empty);
-        byte[] response = new byte[
+        byte[] credentialResponse = new byte[
             authorization.Length + authenticationIdentity.Length + secret.Length + 2];
 
         try
         {
-            authorization.CopyTo(response, 0);
-            authenticationIdentity.CopyTo(response, authorization.Length + 1);
-            secret.CopyTo(response, authorization.Length + authenticationIdentity.Length + 2);
-            return ValueTask.FromResult<ReadOnlyMemory<byte>?>(response);
+            authorization.CopyTo(credentialResponse, 0);
+            authenticationIdentity.CopyTo(credentialResponse, authorization.Length + 1);
+            secret.CopyTo(
+                credentialResponse,
+                authorization.Length + authenticationIdentity.Length + 2);
+            response = credentialResponse;
+            return ValueTask.FromResult<ReadOnlyMemory<byte>?>(credentialResponse);
+        }
+        catch
+        {
+            CryptographicOperations.ZeroMemory(credentialResponse);
+            throw;
         }
         finally
         {
@@ -46,5 +57,24 @@ public sealed class ManageSievePlainAuthenticator(
         cancellationToken.ThrowIfCancellationRequested();
         throw new ManageSieveAuthenticationException(
             "SASL PLAIN does not support additional server challenges.");
+    }
+
+    public ValueTask CompleteAsync(
+        ReadOnlyMemory<byte>? serverData,
+        CancellationToken cancellationToken = default)
+    {
+        ClearResponse();
+        return ValueTask.CompletedTask;
+    }
+
+    public void Abort() => ClearResponse();
+
+    private void ClearResponse()
+    {
+        byte[]? responseToClear = Interlocked.Exchange(ref response, null);
+        if (responseToClear is not null)
+        {
+            CryptographicOperations.ZeroMemory(responseToClear);
+        }
     }
 }

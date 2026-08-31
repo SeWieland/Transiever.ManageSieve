@@ -12,18 +12,35 @@ internal enum ManageSieveResponseStatus
     Bye
 }
 
-internal sealed record ManageSieveProtocolValue(ReadOnlyMemory<byte> Bytes)
+internal enum ManageSieveProtocolValueKind
+{
+    Atom,
+    QuotedString,
+    Literal
+}
+
+internal sealed record ManageSieveProtocolValue(
+    ReadOnlyMemory<byte> Bytes,
+    ManageSieveProtocolValueKind Kind)
 {
     public string Text => Encoding.UTF8.GetString(Bytes.Span);
 }
 
 internal sealed record ManageSieveDataLine(IReadOnlyList<ManageSieveProtocolValue> Values);
 
+internal sealed record ManageSieveResponseCode(
+    string Atom,
+    IReadOnlyList<ManageSieveProtocolValue> Arguments,
+    string Text);
+
 internal sealed record ManageSieveResponse(
     ManageSieveResponseStatus Status,
     IReadOnlyList<ManageSieveDataLine> Data,
-    string? ResponseCode = null,
-    string? Message = null);
+    ManageSieveResponseCode? Code = null,
+    string? Message = null)
+{
+    public string? ResponseCode => Code?.Text;
+}
 
 internal sealed class ManageSieveProtocolReader(Stream stream)
 {
@@ -37,22 +54,42 @@ internal sealed class ManageSieveProtocolReader(Stream stream)
         while (true)
         {
             byte[] line = await ReadLineAsync(cancellationToken).ConfigureAwait(false);
-            if (TryParseStatus(line, out ManageSieveResponse? status))
+            ManageSieveResponse? status =
+                await ParseStatusAsync(line, cancellationToken).ConfigureAwait(false);
+            if (status is not null)
             {
-                return status! with { Data = data };
+                return status with { Data = data };
             }
 
-            IReadOnlyList<ManageSieveProtocolValue> values =
-                await ParseDataLineAsync(line, cancellationToken).ConfigureAwait(false);
-            data.Add(new ManageSieveDataLine(values));
-
-            if (allowContinuation && data.Count == 1 && values.Count == 1 &&
-                IsAuthenticationChallenge(line))
+            IReadOnlyList<ManageSieveProtocolValue> values;
+            try
             {
+                values = await ParseDataLineAsync(line, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+            catch (ManageSieveProtocolException) when (allowContinuation)
+            {
+                throw new ManageSieveProtocolException(
+                    "The server returned an invalid SASL challenge.");
+            }
+            if (allowContinuation)
+            {
+                if (values.Count != 1 ||
+                    values[0].Kind is not (
+                        ManageSieveProtocolValueKind.QuotedString or
+                        ManageSieveProtocolValueKind.Literal) ||
+                    !IsAuthenticationChallenge(line))
+                {
+                    throw new ManageSieveProtocolException(
+                        "The server returned an invalid SASL challenge.");
+                }
+
                 return new ManageSieveResponse(
                     ManageSieveResponseStatus.Continue,
-                    data);
+                    [new ManageSieveDataLine(values)]);
             }
+
+            data.Add(new ManageSieveDataLine(values));
         }
     }
 
@@ -72,40 +109,22 @@ internal sealed class ManageSieveProtocolReader(Stream stream)
 
             if (line[position] == (byte)'{')
             {
-                int close = Array.IndexOf(line, (byte)'}', position + 1);
-                if (close < 0)
-                {
-                    throw new ManageSieveProtocolException("A literal length was not terminated.");
-                }
-
-                string lengthText = Encoding.ASCII.GetString(
-                    line,
-                    position + 1,
-                    close - position - 1).TrimEnd('+');
-                if (!int.TryParse(
-                    lengthText,
-                    NumberStyles.None,
-                    CultureInfo.InvariantCulture,
-                    out int length) ||
-                    length < 0)
-                {
-                    throw new ManageSieveProtocolException("A literal length was invalid.");
-                }
-
-                if (close != line.Length - 1)
-                {
-                    throw new ManageSieveProtocolException(
-                        "A response literal marker must end its line.");
-                }
-
+                int length = ParseLiteralLength(line, position);
                 byte[] literal = GC.AllocateUninitializedArray<byte>(length);
                 await ReadExactlyAsync(literal, cancellationToken).ConfigureAwait(false);
                 await ExpectCrLfAsync(cancellationToken).ConfigureAwait(false);
-                values.Add(new ManageSieveProtocolValue(literal));
+                values.Add(new ManageSieveProtocolValue(
+                    literal,
+                    ManageSieveProtocolValueKind.Literal));
                 return values;
             }
 
-            values.Add(new ManageSieveProtocolValue(ParseToken(line, ref position)));
+            ManageSieveProtocolValueKind kind = line[position] == (byte)'"'
+                ? ManageSieveProtocolValueKind.QuotedString
+                : ManageSieveProtocolValueKind.Atom;
+            values.Add(new ManageSieveProtocolValue(
+                ParseToken(line, ref position),
+                kind));
         }
 
         if (values.Count == 0)
@@ -162,9 +181,9 @@ internal sealed class ManageSieveProtocolReader(Stream stream)
         throw new ManageSieveProtocolException("A quoted response was not terminated.");
     }
 
-    private static bool TryParseStatus(
+    private async ValueTask<ManageSieveResponse?> ParseStatusAsync(
         byte[] line,
-        out ManageSieveResponse? response)
+        CancellationToken cancellationToken)
     {
         string text = Encoding.UTF8.GetString(line);
         int separator = text.IndexOf(' ');
@@ -179,50 +198,227 @@ internal sealed class ManageSieveProtocolReader(Stream stream)
 
         if (status is null)
         {
-            response = null;
-            return false;
+            return null;
         }
 
-        string remainder = separator < 0 ? string.Empty : text[(separator + 1)..].TrimStart();
-        string? responseCode = null;
-        if (remainder.StartsWith('('))
+        int position = separator < 0 ? line.Length : separator + 1;
+        SkipSpaces(line, ref position);
+        ManageSieveResponseCode? responseCode = null;
+        if (position < line.Length && line[position] == (byte)'(')
         {
-            int close = remainder.IndexOf(')');
-            if (close < 0)
+            int codeStart = ++position;
+            int atomStart = position;
+            while (position < line.Length && IsAtomCharacter(line[position]))
             {
-                throw new ManageSieveProtocolException(
-                    "A response code was not terminated.");
+                position++;
             }
 
-            responseCode = remainder[1..close];
-            remainder = remainder[(close + 1)..].TrimStart();
+            if (position == atomStart)
+            {
+                throw new ManageSieveProtocolException("A response code atom was missing.");
+            }
+
+            if (position < line.Length &&
+                line[position] is not ((byte)' ' or (byte)')'))
+            {
+                throw new ManageSieveProtocolException("A response code atom was invalid.");
+            }
+
+            string responseCodeAtom = Encoding.ASCII.GetString(
+                line,
+                atomStart,
+                position - atomStart);
+            List<ManageSieveProtocolValue> arguments = [];
+            string? responseCodeText = null;
+            while (position < line.Length)
+            {
+                if (line[position] == (byte)')')
+                {
+                    responseCodeText = Encoding.UTF8.GetString(
+                        line,
+                        codeStart,
+                        position - codeStart);
+                    position++;
+                    break;
+                }
+
+                if (line[position] != (byte)' ')
+                {
+                    throw new ManageSieveProtocolException(
+                        "A response code argument was not separated by a space.");
+                }
+
+                SkipSpaces(line, ref position);
+                if (position >= line.Length)
+                {
+                    break;
+                }
+
+                if (line[position] == (byte)')')
+                {
+                    throw new ManageSieveProtocolException(
+                        "A response code argument was missing.");
+                }
+
+                if (line[position] == (byte)'{')
+                {
+                    int length = ParseLiteralLength(line, position);
+                    byte[] literal = GC.AllocateUninitializedArray<byte>(length);
+                    await ReadExactlyAsync(literal, cancellationToken).ConfigureAwait(false);
+                    arguments.Add(new ManageSieveProtocolValue(
+                        literal,
+                        ManageSieveProtocolValueKind.Literal));
+
+                    int prefixLength = line.Length - codeStart;
+                    byte[] codeBytes = GC.AllocateUninitializedArray<byte>(
+                        prefixLength + 2 + literal.Length);
+                    line.AsSpan(codeStart).CopyTo(codeBytes);
+                    "\r\n"u8.CopyTo(codeBytes.AsSpan(prefixLength));
+                    literal.CopyTo(codeBytes, prefixLength + 2);
+                    responseCodeText = Encoding.UTF8.GetString(codeBytes);
+
+                    line = await ReadLineAsync(cancellationToken).ConfigureAwait(false);
+                    if (line.Length == 0 || line[0] != (byte)')')
+                    {
+                        throw new ManageSieveProtocolException(
+                            "A response-code literal was not followed by a closing parenthesis.");
+                    }
+
+                    position = 1;
+                    break;
+                }
+
+                arguments.Add(ParseResponseCodeArgument(line, ref position));
+            }
+
+            if (responseCodeText is null)
+            {
+                throw new ManageSieveProtocolException("A response code was not terminated.");
+            }
+
+            responseCode = new ManageSieveResponseCode(
+                responseCodeAtom,
+                arguments,
+                responseCodeText);
         }
 
-        string? message = null;
-        if (remainder.Length > 0)
+        if (responseCode is not null &&
+            position < line.Length &&
+            line[position] != (byte)' ')
         {
-            byte[] messageBytes = Encoding.UTF8.GetBytes(remainder);
-            int position = 0;
-            message = Encoding.UTF8.GetString(ParseToken(messageBytes, ref position));
-            SkipSpaces(messageBytes, ref position);
-            if (position != messageBytes.Length)
+            throw new ManageSieveProtocolException(
+                "A status message was not separated by a space.");
+        }
+
+        SkipSpaces(line, ref position);
+        string? message = null;
+        if (position < line.Length)
+        {
+            message = Encoding.UTF8.GetString(ParseToken(line, ref position));
+            SkipSpaces(line, ref position);
+            if (position != line.Length)
             {
                 throw new ManageSieveProtocolException(
                     "Unexpected data followed a status message.");
             }
         }
 
-        response = new ManageSieveResponse(
+        return new ManageSieveResponse(
             status.Value,
             [],
             responseCode,
             message);
-        return true;
     }
 
-    private static bool IsAuthenticationChallenge(byte[] line) =>
-        line.Length >= 2 &&
-        (line[0] == (byte)'"' || line[0] == (byte)'{');
+    private static int ParseLiteralLength(byte[] line, int position)
+    {
+        int close = Array.IndexOf(line, (byte)'}', position + 1);
+        if (close < 0)
+        {
+            throw new ManageSieveProtocolException("A literal length was not terminated.");
+        }
+
+        ReadOnlySpan<byte> lengthBytes = line.AsSpan(position + 1, close - position - 1);
+        if (!int.TryParse(
+            Encoding.ASCII.GetString(lengthBytes),
+            NumberStyles.None,
+            CultureInfo.InvariantCulture,
+            out int length) ||
+            length < 0)
+        {
+            throw new ManageSieveProtocolException("A literal length was invalid.");
+        }
+
+        if (close != line.Length - 1)
+        {
+            throw new ManageSieveProtocolException(
+                "A response literal marker must end its line.");
+        }
+
+        return length;
+    }
+
+    private static ManageSieveProtocolValue ParseResponseCodeArgument(
+        byte[] line,
+        ref int position)
+    {
+        if (line[position] == (byte)'"')
+        {
+            return new ManageSieveProtocolValue(
+                ParseToken(line, ref position),
+                ManageSieveProtocolValueKind.QuotedString);
+        }
+
+        int start = position;
+        while (position < line.Length &&
+            line[position] is not ((byte)' ' or (byte)')'))
+        {
+            position++;
+        }
+
+        return new ManageSieveProtocolValue(
+            line[start..position],
+            ManageSieveProtocolValueKind.Atom);
+    }
+
+    private static bool IsAtomCharacter(byte value) =>
+        value is (byte)'!' or
+            >= (byte)'#' and <= (byte)'\'' or
+            >= (byte)'*' and <= (byte)'[' or
+            >= (byte)']' and <= (byte)'z' or
+            >= (byte)'|' and <= (byte)'~';
+
+    private static bool IsAuthenticationChallenge(byte[] line)
+    {
+        if (line.Length < 2)
+        {
+            return false;
+        }
+
+        if (line[0] == (byte)'{')
+        {
+            return line[^1] == (byte)'}';
+        }
+
+        if (line[0] != (byte)'"')
+        {
+            return false;
+        }
+
+        for (int position = 1; position < line.Length; position++)
+        {
+            if (line[position] == (byte)'\\')
+            {
+                position++;
+            }
+            else if (line[position] == (byte)'"')
+            {
+                return position == line.Length - 1;
+            }
+        }
+
+        return false;
+    }
 
     private async ValueTask<byte[]> ReadLineAsync(CancellationToken cancellationToken)
     {
@@ -327,7 +523,7 @@ internal static class ManageSieveCommandSerializer
         return [Encoding.ASCII.GetBytes(prefix), content, "\r\n"u8.ToArray()];
     }
 
-    public static ReadOnlyMemory<byte> Authentication(
+    public static byte[] Authentication(
         string mechanism,
         ReadOnlyMemory<byte>? initialResponse)
     {
@@ -341,7 +537,7 @@ internal static class ManageSieveCommandSerializer
         return Encoding.ASCII.GetBytes(command + "\r\n");
     }
 
-    public static ReadOnlyMemory<byte> QuotedBase64(ReadOnlyMemory<byte> response) =>
+    public static byte[] QuotedBase64(ReadOnlyMemory<byte> response) =>
         Encoding.ASCII.GetBytes($"{Quote(Convert.ToBase64String(response.Span))}\r\n");
 }
 

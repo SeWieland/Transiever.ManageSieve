@@ -1,3 +1,5 @@
+using System.Buffers;
+using System.Buffers.Text;
 using System.Security.Cryptography;
 
 namespace Transiever.ManageSieve;
@@ -166,34 +168,52 @@ public sealed class ManageSieveClient : IManageSieveClient
         ArgumentNullException.ThrowIfNull(authenticator);
         ThrowIfDisposed();
         EnsureState(ManageSieveSessionState.Secured, ManageSieveSessionState.Connected);
+        string mechanism = authenticator.Mechanism;
 
         if (State != ManageSieveSessionState.Secured &&
-            authenticator is ManageSievePlainAuthenticator)
+            !authenticator.AllowsUnprotectedConnection)
         {
             throw new InvalidOperationException(
-                "SASL PLAIN credentials cannot be sent over an unsecured connection.");
+                "The selected SASL mechanism requires a protected connection.");
         }
 
-        if (Capabilities is not null &&
-            !Capabilities.SaslMechanisms.Contains(authenticator.Mechanism))
+        if (Capabilities is null ||
+            !Capabilities.SaslMechanisms.Contains(mechanism))
         {
             throw new ManageSieveAuthenticationException(
-                $"The server did not advertise SASL mechanism {authenticator.Mechanism}.");
+                "The server did not advertise the selected SASL mechanism.");
         }
 
         await commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        bool authenticatorProcessingBegan = false;
+        bool authenticatorCallback = false;
+        bool bytesWritten = false;
+        bool exchangeSynchronized = false;
+        CancellationToken operationCancellationToken = default;
         try
         {
             using CancellationTokenSource timeout = CreateTimeout(
                 Options.OperationTimeout,
                 cancellationToken);
+            operationCancellationToken = timeout.Token;
+            authenticatorProcessingBegan = true;
+            authenticatorCallback = true;
             ReadOnlyMemory<byte>? initial =
                 await authenticator.GetInitialResponseAsync(timeout.Token).ConfigureAwait(false);
-            List<ReadOnlyMemory<byte>> command =
-            [
-                ManageSieveCommandSerializer.Authentication(authenticator.Mechanism, initial)
-            ];
-            await WriteAsync(command, timeout.Token).ConfigureAwait(false);
+            authenticatorCallback = false;
+            byte[] authenticationFrame = ManageSieveCommandSerializer.Authentication(
+                mechanism,
+                initial);
+            try
+            {
+                timeout.Token.ThrowIfCancellationRequested();
+                bytesWritten = true;
+                await WriteAsync([authenticationFrame], timeout.Token).ConfigureAwait(false);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(authenticationFrame);
+            }
 
             while (true)
             {
@@ -202,21 +222,43 @@ public sealed class ManageSieveClient : IManageSieveClient
                         .ConfigureAwait(false);
                 if (response.Status == ManageSieveResponseStatus.Ok)
                 {
-                    if (response.Data.Count > 0)
+                    byte[]? successData = DecodeSaslSuccessData(response);
+                    try
                     {
-                        Capabilities =
-                            ManageSieveProtocolMapper.MapCapabilities(response.Data);
-                    }
+                        ReadOnlyMemory<byte>? completionData = null;
+                        if (successData is not null)
+                        {
+                            completionData = successData;
+                        }
 
-                    State = ManageSieveSessionState.Authenticated;
-                    return;
+                        authenticatorCallback = true;
+                        await authenticator.CompleteAsync(
+                            completionData,
+                            timeout.Token).ConfigureAwait(false);
+                        authenticatorCallback = false;
+
+                        State = ManageSieveSessionState.Authenticated;
+                        return;
+                    }
+                    finally
+                    {
+                        if (successData is not null)
+                        {
+                            CryptographicOperations.ZeroMemory(successData);
+                        }
+                    }
                 }
 
-                if (response.Status is ManageSieveResponseStatus.No or ManageSieveResponseStatus.Bye)
+                if (response.Status == ManageSieveResponseStatus.No)
                 {
-                    throw new ManageSieveAuthenticationException(
-                        response.Message ?? "ManageSieve authentication failed.",
-                        response.ResponseCode);
+                    exchangeSynchronized = true;
+                    throw AuthenticationRejected(response);
+                }
+
+                if (response.Status == ManageSieveResponseStatus.Bye)
+                {
+                    throw new ManageSieveConnectionException(
+                        "ManageSieve server closed the connection during authentication.");
                 }
 
                 if (response.Data.Count != 1 || response.Data[0].Values.Count != 1)
@@ -229,40 +271,187 @@ public sealed class ManageSieveClient : IManageSieveClient
                 byte[] challenge;
                 try
                 {
-                    challenge = Convert.FromBase64String(
-                        System.Text.Encoding.ASCII.GetString(encodedChallenge));
-                }
-                catch (FormatException exception)
-                {
-                    throw new ManageSieveProtocolException(
-                        "The server returned an invalid base64 SASL challenge.",
-                        exception);
+                    challenge = DecodeSaslData(
+                        encodedChallenge,
+                        "The server returned an invalid base64 SASL challenge.");
                 }
                 finally
                 {
                     CryptographicOperations.ZeroMemory(encodedChallenge);
                 }
 
-                ReadOnlyMemory<byte> answer;
+                byte[] responseFrame;
                 try
                 {
-                    answer = await authenticator.RespondAsync(challenge, timeout.Token)
-                        .ConfigureAwait(false);
+                    authenticatorCallback = true;
+                    ReadOnlyMemory<byte> answer =
+                        await authenticator.RespondAsync(challenge, timeout.Token)
+                            .ConfigureAwait(false);
+                    authenticatorCallback = false;
+                    responseFrame = ManageSieveCommandSerializer.QuotedBase64(answer);
                 }
                 finally
                 {
                     CryptographicOperations.ZeroMemory(challenge);
                 }
 
-                await WriteAsync(
-                    [ManageSieveCommandSerializer.QuotedBase64(answer)],
-                    timeout.Token).ConfigureAwait(false);
+                try
+                {
+                    await WriteAsync([responseFrame], timeout.Token).ConfigureAwait(false);
+                }
+                finally
+                {
+                    CryptographicOperations.ZeroMemory(responseFrame);
+                }
             }
+        }
+        catch (Exception exception)
+        {
+            if (authenticatorProcessingBegan)
+            {
+                await AbortAuthenticationAsync(
+                    authenticator,
+                    bytesWritten && !exchangeSynchronized).ConfigureAwait(false);
+            }
+
+            if (exception is OperationCanceledException)
+            {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
+                if (operationCancellationToken.IsCancellationRequested)
+                {
+                    throw new TimeoutException("ManageSieve authentication timed out.");
+                }
+            }
+
+            if (exchangeSynchronized)
+            {
+                throw;
+            }
+
+            if (authenticatorCallback)
+            {
+                throw new ManageSieveAuthenticationException(
+                    "ManageSieve authenticator failed.");
+            }
+
+            throw;
         }
         finally
         {
             commandLock.Release();
         }
+    }
+
+    private async ValueTask AbortAuthenticationAsync(
+        IManageSieveAuthenticator authenticator,
+        bool bytesWritten)
+    {
+        bool cleanupFailed = false;
+        try
+        {
+            authenticator.Abort();
+        }
+        catch
+        {
+            cleanupFailed = true;
+        }
+
+        if (bytesWritten || cleanupFailed)
+        {
+            try
+            {
+                await ResetTransportAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                cleanupFailed = true;
+            }
+        }
+
+        if (cleanupFailed)
+        {
+            throw new ManageSieveAuthenticationException(
+                "ManageSieve authentication cleanup failed.");
+        }
+    }
+
+    private static ManageSieveAuthenticationException AuthenticationRejected(
+        ManageSieveResponse response) =>
+        new("ManageSieve authentication failed.", response.Code?.Atom);
+
+    private static byte[]? DecodeSaslSuccessData(ManageSieveResponse response)
+    {
+        if (response.Code is not { } code ||
+            !code.Atom.Equals("SASL", StringComparison.OrdinalIgnoreCase))
+        {
+            return null;
+        }
+
+        if (code.Arguments.Count != 1 ||
+            code.Arguments[0].Kind is not (
+                ManageSieveProtocolValueKind.QuotedString or
+                ManageSieveProtocolValueKind.Literal))
+        {
+            throw new ManageSieveProtocolException(
+                "The server returned invalid SASL success data.");
+        }
+
+        return DecodeSaslData(
+            code.Arguments[0].Bytes.Span,
+            "The server returned invalid base64 SASL success data.");
+    }
+
+    private static byte[] DecodeSaslData(
+        ReadOnlySpan<byte> encoded,
+        string errorMessage)
+    {
+        int padding = encoded.Length switch
+        {
+            > 1 when encoded[^2..].SequenceEqual("=="u8) => 2,
+            > 0 when encoded[^1] == (byte)'=' => 1,
+            _ => 0
+        };
+        int contentLength = encoded.Length - padding;
+        bool invalid = encoded.Length % 4 != 0;
+        for (int index = 0; !invalid && index < contentLength; index++)
+        {
+            byte value = encoded[index];
+            invalid = value is not (>= (byte)'A' and <= (byte)'Z') and
+                not (>= (byte)'a' and <= (byte)'z') and
+                not (>= (byte)'0' and <= (byte)'9') and
+                not ((byte)'+' or (byte)'/');
+        }
+
+        for (int index = contentLength; !invalid && index < encoded.Length; index++)
+        {
+            invalid = encoded[index] != (byte)'=';
+        }
+
+        if (invalid)
+        {
+            throw new ManageSieveProtocolException(errorMessage);
+        }
+
+        byte[] decoded = GC.AllocateUninitializedArray<byte>(
+            encoded.Length / 4 * 3 - padding);
+        OperationStatus status = Base64.DecodeFromUtf8(
+            encoded,
+            decoded,
+            out int consumed,
+            out int written);
+        if (status != OperationStatus.Done ||
+            consumed != encoded.Length ||
+            written != decoded.Length)
+        {
+            CryptographicOperations.ZeroMemory(decoded);
+            throw new ManageSieveProtocolException(errorMessage);
+        }
+
+        return decoded;
     }
 
     public async ValueTask UnauthenticateAsync(CancellationToken cancellationToken = default)
@@ -578,17 +767,15 @@ public sealed class ManageSieveClient : IManageSieveClient
 
     private async ValueTask ResetTransportAsync()
     {
-        if (transport is not null)
-        {
-            await transport.DisposeAsync().ConfigureAwait(false);
-        }
-
+        IManageSieveTransport? transportToDispose = transport;
         transport = null;
         reader = null;
         Capabilities = null;
-        if (!disposed)
+        State = ManageSieveSessionState.Disconnected;
+
+        if (transportToDispose is not null)
         {
-            State = ManageSieveSessionState.Disconnected;
+            await transportToDispose.DisposeAsync().ConfigureAwait(false);
         }
     }
 
