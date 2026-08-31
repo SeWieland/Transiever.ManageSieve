@@ -1,6 +1,6 @@
 # Transiever.ManageSieve Architecture
 
-This document is the canonical description of the ManageSieve protocol boundary, layering, public API rules, and security constraints.
+This document is the canonical description of the ManageSieve protocol boundary, layering, and public API rules.
 Test policy lives in [testing](testing.md).
 
 ## System Boundary
@@ -76,47 +76,12 @@ Command methods return structured values only when the server has meaningful dat
 `NO` and unexpected `BYE` responses use typed exceptions carrying response codes.
 Successful warnings remain available on `ManageSieveCommandResult`.
 
-### Authentication lifecycle
+### Authentication boundary
 
-`IManageSieveAuthenticator` adds three lifecycle members:
-`AllowsUnprotectedConnection`, `CompleteAsync`, and `Abort`.
-`GetInitialResponseAsync` and `RespondAsync` provide the initial and challenge responses for the exchange.
-`AllowsUnprotectedConnection` defaults to `false`.
-The client invokes the initial callback once, invokes the response callback for each decoded challenge,
-and invokes `CompleteAsync` only after a successful `OK` response and before entering `Authenticated`.
-`CompleteAsync` receives `null` when the final response has no `SASL` response code,
-or the decoded bytes from the single quoted-string or literal argument of `OK (SASL ...)`.
-
-Response-memory ownership is explicit.
-Memory returned by an authenticator remains owned by the authenticator and is not modified by the client.
-It must remain valid until the client invokes `CompleteAsync` or `Abort`,
-when the authenticator is responsible for clearing retained mutable response and secret buffers.
-Challenge and server-final memory is owned by the client for the duration of the callback only;
-an authenticator must not retain it after the callback returns.
-The client clears its encoded frames, decoded challenge data, and decoded server-final data after use.
-Clearing is best effort and cannot guarantee erasure from immutable strings, GC/runtime copies,
-framework, operating-system, or transport buffers, captured wire copies, or server memory.
-
-Authentication requires a protected connection unless the authenticator explicitly opts in through `AllowsUnprotectedConnection`.
-Capability advertisement is checked before invoking the authenticator or writing `AUTHENTICATE`.
-
-Authentication failure handling preserves only synchronized outcomes.
-If the server returns `NO`, the exchange is synchronized: the client calls `Abort` and,
-when cleanup succeeds, keeps the transport and preserves the connected or secured session so another attempt can be made.
-Failures before the `AUTHENTICATE` frame is written likewise remain on the existing session after local cleanup.
-If the server returns `BYE`, or an I/O error, timeout, cancellation, malformed response, or callback failure occurs after authentication bytes were written,
-the result is indeterminate: the client calls `Abort` and closes the transport; the session becomes `Disconnected`.
-If `Abort` itself throws, cleanup is reported as `ManageSieve authentication cleanup failed.` and the transport is closed.
-The client never sends a wire-level SASL cancellation frame.
-
-Authentication diagnostics are fixed and do not include server prose, callback exception text, credentials, or SASL data.
-The public messages include `The selected SASL mechanism requires a protected connection.`,
-`The server did not advertise the selected SASL mechanism.`,
-`ManageSieve authentication failed.`, `ManageSieve authenticator failed.`,
-`ManageSieve authentication cleanup failed.`, `ManageSieve server closed the connection during authentication.`,
-and `ManageSieve authentication timed out.` as applicable.
-For a server `NO`, `ManageSieveAuthenticationException.ResponseCode` contains only the response-code atom,
-such as `AUTHENTICATIONFAILED`, never its arguments.
+`ManageSieveClient` validates transport policy and capabilities, coordinates the command lock and timeout, and applies the session transition.
+`ManageSieveAuthenticationExchange` owns one exchange's callback ordering, protocol details, and temporary buffers.
+`ManageSieveAuthenticationRecovery` reports whether the current session is reusable, must disconnect, was rejected synchronously, or completed.
+See the [authentication guide](authentication.md) for the lifecycle, security, memory ownership, diagnostics, and failure contract.
 
 Avoid unnecessary framework dependencies.
 The main library should use the .NET base class libraries unless a dependency has a clear, documented benefit.
@@ -125,12 +90,8 @@ The main library should use the .NET base class libraries unless a dependency ha
 
 Security-sensitive behavior is explicit and conservative:
 
-* Never send plaintext credentials over an unencrypted connection by default.
 * Use normal .NET certificate validation by default.
 * Do not add an accept-any-certificate switch to the primary API.
-* Clear or release sensitive authentication buffers as soon as practical.
-* Put credentials behind an authentication abstraction instead of general connection options.
-* Redact authentication exchanges, credentials, and full scripts from diagnostics.
 
 Any insecure compatibility option must be clearly named, opt-in, and tested.
 

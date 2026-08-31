@@ -31,16 +31,7 @@ For a human-oriented overview and tool picker, see the [Transiever ManageSieve g
 * `ManageSievePlainAuthenticator` provides SASL PLAIN and is rejected on an unsecured connection.
 * Typed exceptions distinguish connection, authentication, protocol, and command failures.
 
-Authenticators provide exchange data through `GetInitialResponseAsync` and `RespondAsync`.
-The lifecycle members `AllowsUnprotectedConnection`, `CompleteAsync`, and `Abort` control connection safety,
-successful completion, and local cleanup; `AllowsUnprotectedConnection` defaults to `false`.
-The client owns challenge and server-final buffers only during the callback and clears its copies afterward;
-an authenticator must not retain those inputs after the callback returns.
-Buffers returned by an authenticator remain owned by that authenticator and must stay valid until `CompleteAsync` or `Abort`.
-The authenticator must clear any retained mutable response and secret buffers in that lifecycle callback.
-`CompleteAsync` receives either `null` or decoded server-final bytes from an `OK (SASL ...)` response.
-Clearing is best effort and cannot guarantee erasure from immutable strings, GC/runtime copies,
-framework, operating-system, or transport buffers, captured wire copies, or server memory.
+See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md) for the SASL lifecycle, security, memory ownership, diagnostics, and failure contract.
 
 See the [architecture guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/architecture.md) for protocol constraints and the [testing guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/testing.md) for test policy.
 

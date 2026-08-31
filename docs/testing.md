@@ -3,6 +3,7 @@
 This document is the canonical testing policy for the ManageSieve repository.
 
 The architecture and protocol constraints live in [architecture](architecture.md).
+The authentication lifecycle and failure contract live in [authentication](authentication.md).
 
 ## Test Layers
 
@@ -10,6 +11,7 @@ The architecture and protocol constraints live in [architecture](architecture.md
 It should cover parser, serializer, state-transition, authentication, timeout, cancellation, disposal, and public API behavior.
 The reusable internal `SaslConformanceHarness` supplies scripted fragmented streams and transports for offline authentication tests.
 It records exact wire bytes and non-secret buffer observations without contacting a server or requiring credentials.
+Conformance cases use unique secret sentinels, and the harness is reusable by future SASL mechanisms.
 
 `Transiever.ManageSieve.IntegrationTest` uses Testcontainers and a pinned Dovecot/Pigeonhole image.
 It skips when Docker is unavailable.
@@ -75,7 +77,4 @@ Existing scripts are never overwritten, renamed, activated, deactivated, or dele
 If cleanup fails, the test reports the exact temporary names for manual removal.
 Broad prefix cleanup is intentionally not attempted.
 
-Authentication cleanup has the same narrow guarantee: `Abort` is local and must not attempt wire-level recovery.
-An indeterminate exchange closes the transport; if `Abort` throws, the client reports cleanup failure and also closes the transport.
-Buffer clearing is best effort and cannot guarantee erasure from immutable strings, GC/runtime copies,
-framework, operating-system, or transport buffers, captured wire copies, or server memory.
+Authentication lifecycle, cleanup, ownership, and diagnostic assertions are specified in the [authentication guide](authentication.md).

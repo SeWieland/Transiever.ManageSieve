@@ -14,6 +14,7 @@ It must not add reconciliation, backup, rollback, provider policy, Sieve generat
 
 ```text
 Transiever.ManageSieve.slnx
+docs/authentication.md
 docs/architecture.md
 docs/testing.md
 src/
@@ -32,9 +33,10 @@ Nullable reference types and implicit global usings are enabled.
 
 | Topic                                                                   | Owner                                  |
 | ----------------------------------------------------------------------- | -------------------------------------- |
-| Public API, script operations, and security behavior                    | `src/Transiever.ManageSieve/README.md` |
+| Public API and script operations                                        | `src/Transiever.ManageSieve/README.md` |
 | CLI commands, options, environment variables, and operator workflow     | `src/Transiever.ManageSieve.Cli/README.md` |
-| Protocol layering, parser constraints, API rules, and security defaults | `docs/architecture.md`                 |
+| SASL lifecycle, security, memory ownership, diagnostics, and failures   | `docs/authentication.md`               |
+| Protocol layering, parser constraints, session, transport, and API rules | `docs/architecture.md`                 |
 | Unit, Docker-backed integration, and live-provider test policy          | `docs/testing.md`                      |
 | Public overview, docs map, example, and development commands            | `README.md`                            |
 | Repo boundary, validation, release constraints, and agent workflow      | `AGENTS.md`                            |
