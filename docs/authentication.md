@@ -65,7 +65,7 @@ The client calls `Abort`, resets and disposes the transport, clears capabilities
 The original caller cancellation is preserved; a linked operation timeout becomes `ManageSieve authentication timed out.`
 Protocol failures and authenticator failures retain their safe typed categories.
 
-If `Abort` throws, or transport cleanup fails, the client still closes the transport and reports the fixed `ManageSieve authentication cleanup failed.` diagnostic.
+If `Abort` throws, or transport cleanup reports failure, the client drops the connection, clears capabilities, enters `Disconnected`, attempts transport disposal, and reports the fixed `ManageSieve authentication cleanup failed.` diagnostic.
 The client never attempts wire-level recovery after a local failure.
 
 ```mermaid
@@ -74,7 +74,7 @@ flowchart TD
     B -->|Yes| C[Call Abort]
     B -->|No| D[Keep prior session]
     C --> E{Cleanup failed?}
-    E -->|Yes| F[Close transport]
+    E -->|Yes| F[Drop connection; try disposal]
     E -->|No| G{Recovery state}
     G -->|Not started| D
     G -->|Server NO| H[Keep prior session]

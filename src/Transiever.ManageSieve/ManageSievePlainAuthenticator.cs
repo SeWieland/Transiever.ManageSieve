@@ -64,7 +64,11 @@ public sealed class ManageSievePlainAuthenticator(
         CancellationToken cancellationToken = default)
     {
         ClearResponse();
-        return ValueTask.CompletedTask;
+        return serverData is null
+            ? ValueTask.CompletedTask
+            : ValueTask.FromException(
+                new ManageSieveAuthenticationException(
+                    "SASL PLAIN does not support server-final data."));
     }
 
     public void Abort() => ClearResponse();

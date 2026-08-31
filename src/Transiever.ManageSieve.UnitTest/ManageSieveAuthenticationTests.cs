@@ -143,6 +143,49 @@ public sealed class ManageSieveAuthenticationTests
         AssertZeroed([response]);
     }
 
+    [Theory]
+    [InlineData("", null)]
+    [InlineData("c2VydmVyLWZpbmFsLXNlbnRpbmVs", "server-final-sentinel")]
+    public async Task Plain_authentication_rejects_unexpected_server_final_data(
+        string encodedServerData,
+        string? serverData)
+    {
+        const string password = "plain-password-sentinel";
+        byte[] responses = Encoding.ASCII.GetBytes(
+            "\"SASL\" \"PLAIN\"\r\nOK\r\n" +
+            $"OK (SASL \"{encodedServerData}\")\r\n");
+        await using SaslConformanceHarness harness =
+            await SaslConformanceHarness.ConnectAsync(responses);
+        var authenticator = new RecordingPlainAuthenticator("user", password);
+
+        ManageSieveAuthenticationException exception =
+            await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+                () => harness.Client.AuthenticateAsync(
+                    authenticator,
+                    TestContext.Current.CancellationToken).AsTask());
+
+        Assert.Equal("ManageSieve authenticator failed.", exception.Message);
+        Assert.Null(exception.InnerException);
+        Assert.Null(exception.ResponseCode);
+        string diagnostic = exception.ToString();
+        Assert.DoesNotContain(password, diagnostic, StringComparison.Ordinal);
+        if (serverData is not null)
+        {
+            Assert.DoesNotContain(serverData, diagnostic, StringComparison.Ordinal);
+            Assert.DoesNotContain(encodedServerData, diagnostic, StringComparison.Ordinal);
+        }
+
+        Assert.Equal(["Initial", "Complete", "Abort"], authenticator.Calls);
+        Assert.Equal(ManageSieveSessionState.Disconnected, harness.Client.State);
+        Assert.Null(harness.Client.Capabilities);
+        Assert.True(harness.Transport.IsDisposed);
+        Assert.True(authenticator.InitialResponse.HasValue);
+        Assert.True(authenticator.CompletionMemory.HasValue);
+        AssertZeroed(
+            [authenticator.InitialResponse.Value, authenticator.CompletionMemory.Value]);
+        AssertZeroed(harness.Transport.OriginalSensitiveWrites);
+    }
+
     [Fact]
     public async Task Authentication_captures_mechanism_once_for_validation_and_frame()
     {
@@ -1014,6 +1057,52 @@ public sealed class ManageSieveAuthenticationTests
             ReadOnlyMemory<byte> challenge,
             CancellationToken cancellationToken = default) =>
             ValueTask.FromResult<ReadOnlyMemory<byte>>(challengeResponse);
+    }
+
+    private sealed class RecordingPlainAuthenticator(
+        string userName,
+        string password) : IManageSieveAuthenticator
+    {
+        private readonly ManageSievePlainAuthenticator inner = new(userName, password);
+
+        public string Mechanism => inner.Mechanism;
+
+        public List<string> Calls { get; } = [];
+
+        public ReadOnlyMemory<byte>? InitialResponse { get; private set; }
+
+        public ReadOnlyMemory<byte>? CompletionMemory { get; private set; }
+
+        public async ValueTask<ReadOnlyMemory<byte>?> GetInitialResponseAsync(
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add("Initial");
+            InitialResponse = await inner.GetInitialResponseAsync(cancellationToken);
+            return InitialResponse;
+        }
+
+        public ValueTask<ReadOnlyMemory<byte>> RespondAsync(
+            ReadOnlyMemory<byte> challenge,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add("Respond");
+            return inner.RespondAsync(challenge, cancellationToken);
+        }
+
+        public async ValueTask CompleteAsync(
+            ReadOnlyMemory<byte>? serverData,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add("Complete");
+            CompletionMemory = serverData;
+            await inner.CompleteAsync(serverData, cancellationToken);
+        }
+
+        public void Abort()
+        {
+            Calls.Add("Abort");
+            inner.Abort();
+        }
     }
 
 }
