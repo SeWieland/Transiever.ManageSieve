@@ -20,11 +20,71 @@ public sealed class ManageSieveProtocolTests
             ManageSieveProtocolMapper.MapCapabilities(response.Data);
 
         Assert.Equal(ManageSieveResponseStatus.Ok, response.Status);
+        Assert.Equal("WARNINGS", response.Code?.Atom);
+        Assert.Empty(response.Code?.Arguments ?? []);
+        Assert.Equal("WARNINGS", response.Code?.Text);
         Assert.Equal("WARNINGS", response.ResponseCode);
         Assert.Equal("ready", response.Message);
         Assert.Equal("Test \"Server\"", capabilities.Implementation);
         Assert.True(capabilities.SupportsStartTls);
         Assert.Contains("vacation", capabilities.SieveExtensions);
+    }
+
+    [Theory]
+    [InlineData("OK (SASL \"c2VydmVyLWZpbmFs\")\r\n", "c2VydmVyLWZpbmFs")]
+    [InlineData("OK (SASL \"\")\r\n", "")]
+    public async Task ResponseCode_ParsesQuotedArgumentBytes(
+        string input,
+        string expectedArgument)
+    {
+        var reader = new ManageSieveProtocolReader(new FragmentedStream(input));
+
+        ManageSieveResponse response = await reader.ReadResponseAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("SASL", response.Code?.Atom);
+        Assert.Equal(expectedArgument, response.Code?.Arguments.Single().Text);
+        Assert.Equal(
+            ManageSieveProtocolValueKind.QuotedString,
+            response.Code?.Arguments.Single().Kind);
+        Assert.Equal(input[4..^3], response.ResponseCode);
+        Assert.Null(response.Message);
+    }
+
+    [Fact]
+    public async Task ResponseCode_ParsesLiteralArgumentAcrossStatusLine()
+    {
+        const string input =
+            "OK (SASL {16}\r\nc2VydmVyLWZpbmFs) \"authenticated\"\r\n";
+        var reader = new ManageSieveProtocolReader(new FragmentedStream(input));
+
+        ManageSieveResponse response = await reader.ReadResponseAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal("SASL", response.Code?.Atom);
+        Assert.Equal("c2VydmVyLWZpbmFs"u8.ToArray(),
+            response.Code?.Arguments.Single().Bytes.ToArray());
+        Assert.Equal(
+            ManageSieveProtocolValueKind.Literal,
+            response.Code?.Arguments.Single().Kind);
+        Assert.Equal("SASL {16}\r\nc2VydmVyLWZpbmFs", response.ResponseCode);
+        Assert.Equal("authenticated", response.Message);
+    }
+
+    [Fact]
+    public async Task ResponseCode_PreservesBareAtomArgumentForExtensions()
+    {
+        var reader = new ManageSieveProtocolReader(
+            new FragmentedStream("OK (EXTENSION bare) \"safe\"\r\n"));
+
+        ManageSieveResponse response = await reader.ReadResponseAsync(
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(ManageSieveProtocolValueKind.Atom,
+            response.Code?.Arguments.Single().Kind);
+        Assert.Equal("bare", response.Code?.Arguments.Single().Text);
+        Assert.Equal("EXTENSION bare", response.ResponseCode);
+        Assert.Equal("safe", response.Message);
     }
 
     [Fact]
@@ -48,6 +108,15 @@ public sealed class ManageSieveProtocolTests
     [InlineData("\"bad\\q\"\r\n")]
     [InlineData("{x}\r\n")]
     [InlineData("OK (BROKEN\r\n")]
+    [InlineData("OK (\"BROKEN\")\r\n")]
+    [InlineData("OK (SASL )\r\n")]
+    [InlineData("OK (SASL \"bad\\q\")\r\n")]
+    [InlineData("OK (SASL {3}\r\nabcd)\r\n")]
+    [InlineData("OK (SASL {4}\r\nYWJj unexpected)\r\n")]
+    [InlineData("OK (WARNINGS)\"safe\"\r\n")]
+    [InlineData("OK (SASL {4}\r\nYWJj)\"safe\"\r\n")]
+    [InlineData("{1+}\r\na\r\nOK\r\n")]
+    [InlineData("OK (SASL {4+}\r\nYWJj)\r\n")]
     public async Task Parser_RejectsMalformedResponses(string response)
     {
         var reader = new ManageSieveProtocolReader(new FragmentedStream(response));
