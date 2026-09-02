@@ -49,7 +49,7 @@ internal sealed class ManageSieveAuthenticationExchange
             {
                 ManageSieveResponse response = await reader.ReadResponseAsync(
                     cancellationToken,
-                    allowContinuation: true).ConfigureAwait(false);
+                    allowAuthenticationChallenge: true).ConfigureAwait(false);
                 switch (response.Status)
                 {
                     case ManageSieveResponseStatus.Ok:
