@@ -46,8 +46,9 @@ The client implements these ManageSieve concerns:
 
 Start here, then follow the focused guides:
 
-* [library guide](src/Transiever.ManageSieve/README.md) for public API, script operations, and security behavior.
+* [library guide](src/Transiever.ManageSieve/README.md) for public API and script operations.
 * [CLI guide](src/Transiever.ManageSieve.Cli/README.md) for `msieve` commands, options, and operator workflow.
+* [authentication](docs/authentication.md) for SASL lifecycle, security, memory ownership, diagnostics, and failures.
 * [architecture](docs/architecture.md) for protocol layering, parsing constraints, public API rules, and repository boundaries.
 * [testing](docs/testing.md) for unit, Docker-backed integration, and opt-in live-provider test policy.
 

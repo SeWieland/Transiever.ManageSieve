@@ -1,6 +1,6 @@
 # Transiever.ManageSieve Architecture
 
-This document is the canonical description of the ManageSieve protocol boundary, layering, public API rules, and security constraints.
+This document is the canonical description of the ManageSieve protocol boundary, layering, and public API rules.
 Test policy lives in [testing](testing.md).
 
 ## System Boundary
@@ -76,6 +76,13 @@ Command methods return structured values only when the server has meaningful dat
 `NO` and unexpected `BYE` responses use typed exceptions carrying response codes.
 Successful warnings remain available on `ManageSieveCommandResult`.
 
+### Authentication boundary
+
+`ManageSieveClient` validates transport policy and capabilities, coordinates the command lock and timeout, and applies the session transition.
+`ManageSieveAuthenticationExchange` owns one exchange's callback ordering, protocol details, and temporary buffers.
+`ManageSieveAuthenticationRecovery` reports whether the current session is reusable, must disconnect, was rejected synchronously, or completed.
+See the [authentication guide](authentication.md) for the lifecycle, security, memory ownership, diagnostics, and failure contract.
+
 Avoid unnecessary framework dependencies.
 The main library should use the .NET base class libraries unless a dependency has a clear, documented benefit.
 
@@ -83,12 +90,8 @@ The main library should use the .NET base class libraries unless a dependency ha
 
 Security-sensitive behavior is explicit and conservative:
 
-* Never send plaintext credentials over an unencrypted connection by default.
 * Use normal .NET certificate validation by default.
 * Do not add an accept-any-certificate switch to the primary API.
-* Clear or release sensitive authentication buffers as soon as practical.
-* Put credentials behind an authentication abstraction instead of general connection options.
-* Redact authentication exchanges, credentials, and full scripts from diagnostics.
 
 Any insecure compatibility option must be clearly named, opt-in, and tested.
 
