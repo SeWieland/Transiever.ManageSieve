@@ -57,8 +57,117 @@ public sealed class ManageSieveCliApplicationTests
 
         Assert.Equal(0, exitCode);
         Assert.True(client.Authenticated);
+        Assert.IsType<ManageSievePlainAuthenticator>(client.Authenticator);
         Assert.Contains("  one", app.TextOutput);
         Assert.Contains("* two", app.TextOutput);
+    }
+
+    [Fact]
+    public async Task AutoSelectsScramWhenAdvertised()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["PLAIN", "SCRAM-SHA-256"])
+            }
+        };
+        TestApplication app = CreateApplication(client);
+
+        int exitCode = await app.Application.RunAsync(
+            CommandLineOptions.Parse(["list"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, exitCode);
+        Assert.IsType<ManageSieveScramSha256Authenticator>(client.Authenticator);
+    }
+
+    [Fact]
+    public async Task AutoFailsBeforeReadingCredentialsWhenNoMechanismIsAdvertised()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities()
+        };
+        var provider = new TrackingSieveServerConfigurationProvider();
+        TestApplication app = CreateApplication(client, provider);
+
+        ManageSieveAuthenticationException exception =
+            await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+                () => app.Application.RunAsync(
+                    CommandLineOptions.Parse(["list"]),
+                    TestContext.Current.CancellationToken));
+
+        Assert.Contains("advertise", exception.Message);
+        Assert.False(provider.CredentialsRequested);
+    }
+
+    [Theory]
+    [InlineData("plain", "SCRAM-SHA-256")]
+    [InlineData("scram-sha-256", "PLAIN")]
+    public async Task ExplicitSaslSelectionDoesNotDowngrade(
+        string requestedMechanism,
+        string advertisedMechanism)
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>([advertisedMechanism])
+            }
+        };
+        var provider = new TrackingSieveServerConfigurationProvider();
+        TestApplication app = CreateApplication(client, provider);
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => app.Application.RunAsync(
+                CommandLineOptions.Parse(
+                    ["list", "--sieve-sasl-mechanism", requestedMechanism]),
+                TestContext.Current.CancellationToken));
+
+        Assert.False(provider.CredentialsRequested);
+        Assert.Null(client.Authenticator);
+    }
+
+    [Fact]
+    public async Task UndefinedSaslMechanismFailsBeforeCredentialsOrAuthentication()
+    {
+        var client = new FakeManageSieveClient();
+        var provider = new TrackingSieveServerConfigurationProvider
+        {
+            SaslMechanism = (ManageSieveSaslMechanism)99
+        };
+        TestApplication app = CreateApplication(client, provider);
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => app.Application.RunAsync(
+                CommandLineOptions.Parse(["list"]),
+                TestContext.Current.CancellationToken));
+
+        Assert.False(provider.CredentialsRequested);
+        Assert.Null(client.Authenticator);
+    }
+
+    [Fact]
+    public async Task SaslSelectionUsesCapabilitiesAdvertisedAfterStartTls()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities(),
+            CapabilitiesAfterStartTls = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["PLAIN"])
+            }
+        };
+        TestApplication app = CreateApplication(client);
+
+        int exitCode = await app.Application.RunAsync(
+            CommandLineOptions.Parse(["list"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, exitCode);
+        Assert.True(client.StartTlsCalled);
+        Assert.IsType<ManageSievePlainAuthenticator>(client.Authenticator);
     }
 
     [Fact]
@@ -207,14 +316,14 @@ public sealed class ManageSieveCliApplicationTests
     }
 
     private static TestApplication CreateApplication(
-        FakeManageSieveClient client)
+        FakeManageSieveClient client,
+        ISieveServerConfigurationProvider? provider = null)
     {
         var rawOutput = new MemoryStream();
         var textBuffer = new StringWriter();
-        var provider = new StaticSieveServerConfigurationProvider();
         var application = new ManageSieveCliApplication(
             new FakeManageSieveClientFactory(client),
-            provider,
+            provider ?? new StaticSieveServerConfigurationProvider(),
             rawOutput,
             textBuffer);
         return new TestApplication(application, rawOutput, textBuffer);
@@ -239,12 +348,47 @@ public sealed class ManageSieveCliApplicationTests
                 SecurityMode = ManageSieveSecurityMode.StartTlsRequired
             };
 
+        public ManageSieveSaslMechanism GetSaslMechanism(
+            CommandLineOptions options) =>
+            options.SieveSaslMechanism ?? ManageSieveSaslMechanism.Auto;
+
         public SieveServerConfiguration GetAuthenticatedConfiguration(
             CommandLineOptions options) =>
             new(
                 GetConnectionOptions(options),
                 "user@example.com",
                 "secret");
+    }
+
+    private sealed class TrackingSieveServerConfigurationProvider
+        : ISieveServerConfigurationProvider
+    {
+        public bool CredentialsRequested { get; private set; }
+
+        public ManageSieveSaslMechanism SaslMechanism { get; set; } =
+            ManageSieveSaslMechanism.Auto;
+
+        public ManageSieveClientOptions GetConnectionOptions(
+            CommandLineOptions options) =>
+            new()
+            {
+                Host = "sieve.example.com",
+                SecurityMode = ManageSieveSecurityMode.StartTlsRequired
+            };
+
+        public ManageSieveSaslMechanism GetSaslMechanism(
+            CommandLineOptions options) =>
+            options.SieveSaslMechanism ?? SaslMechanism;
+
+        public SieveServerConfiguration GetAuthenticatedConfiguration(
+            CommandLineOptions options)
+        {
+            CredentialsRequested = true;
+            return new(
+                GetConnectionOptions(options),
+                "user@example.com",
+                "secret");
+        }
     }
 
     private sealed class FakeManageSieveClientFactory(
@@ -267,7 +411,11 @@ public sealed class ManageSieveCliApplicationTests
 
         public bool StartTlsCalled { get; private set; }
 
+        public ManageSieveCapabilities? CapabilitiesAfterStartTls { get; set; }
+
         public bool Authenticated { get; private set; }
+
+        public IManageSieveAuthenticator? Authenticator { get; private set; }
 
         public bool SetActiveCalled { get; private set; }
 
@@ -281,7 +429,11 @@ public sealed class ManageSieveCliApplicationTests
 
         public string? DeletedScriptName { get; private set; }
 
-        public ManageSieveCapabilities CapabilitiesResult { get; set; } = new();
+        public ManageSieveCapabilities CapabilitiesResult { get; set; } =
+            new()
+            {
+                SaslMechanisms = new HashSet<string>(["PLAIN"])
+            };
 
         public IReadOnlyList<ManageSieveScriptInfo> Scripts { get; set; } = [];
 
@@ -312,6 +464,11 @@ public sealed class ManageSieveCliApplicationTests
             CancellationToken cancellationToken = default)
         {
             StartTlsCalled = true;
+            if (CapabilitiesAfterStartTls is not null)
+            {
+                CapabilitiesResult = CapabilitiesAfterStartTls;
+            }
+
             return ValueTask.CompletedTask;
         }
 
@@ -319,6 +476,7 @@ public sealed class ManageSieveCliApplicationTests
             IManageSieveAuthenticator authenticator,
             CancellationToken cancellationToken = default)
         {
+            Authenticator = authenticator;
             Authenticated = true;
             return ValueTask.CompletedTask;
         }
