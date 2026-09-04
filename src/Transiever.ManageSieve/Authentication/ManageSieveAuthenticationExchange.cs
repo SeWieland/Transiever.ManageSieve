@@ -1,8 +1,9 @@
 using System.Buffers;
 using System.Buffers.Text;
 using System.Security.Cryptography;
+using Transiever.ManageSieve;
 
-namespace Transiever.ManageSieve;
+namespace Transiever.ManageSieve.Authentication;
 
 internal enum ManageSieveAuthenticationRecovery
 {

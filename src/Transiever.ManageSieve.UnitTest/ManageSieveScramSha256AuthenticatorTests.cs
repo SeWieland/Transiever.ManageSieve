@@ -1,4 +1,5 @@
 using System.Text;
+using Transiever.ManageSieve.Authentication;
 using static Transiever.ManageSieve.UnitTest.SaslConformanceHarness;
 
 namespace Transiever.ManageSieve.UnitTest;
