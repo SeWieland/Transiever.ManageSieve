@@ -11,6 +11,8 @@ public interface ISieveServerConfigurationProvider
 {
     ManageSieveClientOptions GetConnectionOptions(CommandLineOptions options);
 
+    ManageSieveSaslMechanism GetSaslMechanism(CommandLineOptions options);
+
     SieveServerConfiguration GetAuthenticatedConfiguration(
         CommandLineOptions options);
 }
@@ -55,6 +57,10 @@ public sealed class EnvironmentSieveServerConfigurationProvider
             SecurityMode = security
         };
     }
+
+    public ManageSieveSaslMechanism GetSaslMechanism(
+        CommandLineOptions options) =>
+        options.SieveSaslMechanism ?? ReadSaslMechanism();
 
     public SieveServerConfiguration GetAuthenticatedConfiguration(
         CommandLineOptions options)
@@ -102,13 +108,32 @@ public sealed class EnvironmentSieveServerConfigurationProvider
         if (Enum.TryParse(
             value,
             ignoreCase: true,
-            out ManageSieveSecurityMode mode))
+            out ManageSieveSecurityMode mode) &&
+            Enum.IsDefined(mode))
         {
             return mode;
         }
 
         throw new InvalidOperationException(
             $"Unknown Sieve security mode: {value}");
+    }
+
+    private ManageSieveSaslMechanism ReadSaslMechanism()
+    {
+        string? value = Read("SASL_MECHANISM");
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return ManageSieveSaslMechanism.Auto;
+        }
+
+        return value.ToLowerInvariant() switch
+        {
+            "auto" => ManageSieveSaslMechanism.Auto,
+            "plain" => ManageSieveSaslMechanism.Plain,
+            "scram-sha-256" => ManageSieveSaslMechanism.ScramSha256,
+            _ => throw new InvalidOperationException(
+                $"Unknown Sieve SASL mechanism: {value}")
+        };
     }
 
     private string Required(string suffix)

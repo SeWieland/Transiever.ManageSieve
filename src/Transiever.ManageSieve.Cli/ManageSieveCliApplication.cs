@@ -199,18 +199,41 @@ public sealed class ManageSieveCliApplication
         CommandLineOptions options,
         CancellationToken cancellationToken)
     {
-        SieveServerConfiguration configuration =
-            configurationProvider.GetAuthenticatedConfiguration(options);
+        // Credentials are requested only after TLS and capability validation.
+        ManageSieveClientOptions connectionOptions =
+            configurationProvider.GetConnectionOptions(options);
+        if (connectionOptions.SecurityMode == ManageSieveSecurityMode.PlainText)
+        {
+            throw new InvalidOperationException(
+                "msieve does not send credentials over a plaintext ManageSieve connection.");
+        }
+
+        ManageSieveSaslMechanism requestedMechanism =
+            configurationProvider.GetSaslMechanism(options);
         IManageSieveClient client =
-            await ConnectAsync(configuration.Options, cancellationToken);
+            await ConnectAsync(connectionOptions, cancellationToken);
 
         try
         {
-            await client.AuthenticateAsync(
-                new ManageSievePlainAuthenticator(
+            ManageSieveCapabilities capabilities = client.Capabilities ??
+                await client.RefreshCapabilitiesAsync(cancellationToken);
+            string selectedMechanism = SelectSaslMechanism(
+                requestedMechanism,
+                capabilities.SaslMechanisms);
+
+            SieveServerConfiguration configuration =
+                configurationProvider.GetAuthenticatedConfiguration(options);
+            IManageSieveAuthenticator authenticator = selectedMechanism switch
+            {
+                "SCRAM-SHA-256" => new ManageSieveScramSha256Authenticator(
                     configuration.UserName,
                     configuration.Password),
-                cancellationToken);
+                _ => new ManageSievePlainAuthenticator(
+                    configuration.UserName,
+                    configuration.Password)
+            };
+
+            await client.AuthenticateAsync(authenticator, cancellationToken);
             return client;
         }
         catch
@@ -218,6 +241,42 @@ public sealed class ManageSieveCliApplication
             await client.DisposeAsync();
             throw;
         }
+    }
+
+    private static string SelectSaslMechanism(
+        ManageSieveSaslMechanism requested,
+        IReadOnlySet<string> advertised)
+    {
+        if (requested == ManageSieveSaslMechanism.Auto)
+        {
+            if (advertised.Contains("SCRAM-SHA-256"))
+            {
+                return "SCRAM-SHA-256";
+            }
+
+            if (advertised.Contains("PLAIN"))
+            {
+                return "PLAIN";
+            }
+
+            throw new ManageSieveAuthenticationException(
+                "The server did not advertise SCRAM-SHA-256 or PLAIN.");
+        }
+
+        string mechanism = requested switch
+        {
+            ManageSieveSaslMechanism.Plain => "PLAIN",
+            ManageSieveSaslMechanism.ScramSha256 => "SCRAM-SHA-256",
+            _ => throw new ManageSieveAuthenticationException(
+                $"Unknown Sieve SASL mechanism: {requested}.")
+        };
+        if (!advertised.Contains(mechanism))
+        {
+            throw new ManageSieveAuthenticationException(
+                $"The server did not advertise the selected SASL mechanism: {mechanism}.");
+        }
+
+        return mechanism;
     }
 
     private async Task<IManageSieveClient> ConnectAsync(
