@@ -2,6 +2,17 @@
 
 This guide is the canonical contract for SASL authentication in `Transiever.ManageSieve`.
 It describes the checks before an exchange, authenticator callbacks, session outcomes, memory ownership, and safe diagnostics.
+The ManageSieve protocol is defined by [RFC 5804](https://www.rfc-editor.org/rfc/rfc5804),
+and its authentication exchange uses the [SASL framework](https://www.rfc-editor.org/rfc/rfc4422).
+
+## Why choose a mechanism?
+
+SASL mechanisms define how a client proves its identity to the server.
+`PLAIN` sends the authorization identity, authentication identity, and password as a Base64-encoded response; Base64 is not encryption, so this client requires protected transport before using it.
+`SCRAM-SHA-256` proves knowledge of the password through a salted challenge-response exchange instead of sending the password itself.
+It also allows a server to store salted verification material that is not by itself sufficient to impersonate the client, reducing the impact of a credential-database disclosure.
+It is specified by [RFC 5802](https://www.rfc-editor.org/rfc/rfc5802) and the SHA-256 registration in [RFC 7677](https://www.rfc-editor.org/rfc/rfc7677).
+This implementation still requires protected transport for SCRAM and supports the non-PLUS mechanism only; it does not provide channel binding.
 
 ## Before authentication
 
