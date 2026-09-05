@@ -3,6 +3,13 @@ using Transiever.ManageSieve;
 
 namespace Transiever.ManageSieve.Cli;
 
+public enum ManageSieveSaslMechanism
+{
+    Auto,
+    Plain,
+    ScramSha256
+}
+
 public sealed class CommandLineOptions
 {
     public ManageSieveCliCommand Command { get; private init; }
@@ -25,6 +32,8 @@ public sealed class CommandLineOptions
 
     public ManageSieveSecurityMode? SieveSecurity { get; private init; }
 
+    public ManageSieveSaslMechanism? SieveSaslMechanism { get; private init; }
+
     public bool ShowHelp { get; private init; }
 
     public static CommandLineOptions Parse(IReadOnlyList<string> args)
@@ -46,6 +55,7 @@ public sealed class CommandLineOptions
         string? sieveUserName = null;
         string? sievePassword = null;
         ManageSieveSecurityMode? sieveSecurity = null;
+        ManageSieveSaslMechanism? sieveSaslMechanism = null;
 
         while (index < args.Count)
         {
@@ -75,6 +85,10 @@ public sealed class CommandLineOptions
                     break;
                 case "--sieve-security-mode":
                     sieveSecurity = ParseSieveSecurity(
+                        ReadOptionValue(args, ref index, option));
+                    break;
+                case "--sieve-sasl-mechanism":
+                    sieveSaslMechanism = ParseSieveSaslMechanism(
                         ReadOptionValue(args, ref index, option));
                     break;
                 case "-h":
@@ -113,7 +127,8 @@ public sealed class CommandLineOptions
             SievePort = sievePort,
             SieveUserName = sieveUserName,
             SievePassword = sievePassword,
-            SieveSecurity = sieveSecurity
+            SieveSecurity = sieveSecurity,
+            SieveSaslMechanism = sieveSaslMechanism
         };
     }
 
@@ -218,11 +233,23 @@ public sealed class CommandLineOptions
         if (Enum.TryParse(
             value,
             ignoreCase: true,
-            out ManageSieveSecurityMode mode))
+            out ManageSieveSecurityMode mode) &&
+            Enum.IsDefined(mode))
         {
             return mode;
         }
 
         throw new ArgumentException($"Unknown Sieve security mode: {value}");
     }
+
+    private static ManageSieveSaslMechanism ParseSieveSaslMechanism(
+        string value) =>
+        value.ToLowerInvariant() switch
+        {
+            "auto" => ManageSieveSaslMechanism.Auto,
+            "plain" => ManageSieveSaslMechanism.Plain,
+            "scram-sha-256" => ManageSieveSaslMechanism.ScramSha256,
+            _ => throw new ArgumentException(
+                $"Unknown Sieve SASL mechanism: {value}")
+        };
 }
