@@ -7,11 +7,11 @@ namespace Transiever.ManageSieve;
 /// </summary>
 public sealed class ManageSieveClient : IManageSieveClient
 {
-    private readonly IManageSieveTransportFactory transportFactory;
-    private readonly SemaphoreSlim commandLock = new(1, 1);
-    private IManageSieveTransport? transport;
-    private ManageSieveProtocolReader? reader;
-    private bool disposed;
+    private readonly IManageSieveTransportFactory _transportFactory;
+    private readonly SemaphoreSlim _commandLock = new(1, 1);
+    private IManageSieveTransport? _transport;
+    private ManageSieveProtocolReader? _reader;
+    private bool _disposed;
 
     public ManageSieveClient(ManageSieveClientOptions options)
         : this(options, TcpManageSieveTransportFactory.Instance)
@@ -46,7 +46,7 @@ public sealed class ManageSieveClient : IManageSieveClient
         }
 
         Options = options;
-        this.transportFactory = transportFactory;
+        _transportFactory = transportFactory;
     }
 
     public ManageSieveClientOptions Options { get; }
@@ -67,20 +67,20 @@ public sealed class ManageSieveClient : IManageSieveClient
 
         try
         {
-            transport = transportFactory.Create(Options);
-            await transport.ConnectAsync(timeout.Token).ConfigureAwait(false);
+            _transport = _transportFactory.Create(Options);
+            await _transport.ConnectAsync(timeout.Token).ConfigureAwait(false);
 
             if (Options.SecurityMode == ManageSieveSecurityMode.ImplicitTls)
             {
-                await transport.UpgradeTlsAsync(Options.Host, timeout.Token).ConfigureAwait(false);
+                await _transport.UpgradeTlsAsync(Options.Host, timeout.Token).ConfigureAwait(false);
             }
 
-            reader = new ManageSieveProtocolReader(transport.Stream);
-            ManageSieveResponse greeting = await reader.ReadResponseAsync(timeout.Token).ConfigureAwait(false);
+            _reader = new ManageSieveProtocolReader(_transport.Stream);
+            ManageSieveResponse greeting = await _reader.ReadResponseAsync(timeout.Token).ConfigureAwait(false);
             ThrowForFailure("CONNECT", greeting);
 
             Capabilities = ManageSieveProtocolMapper.MapCapabilities(greeting.Data);
-            State = transport.IsSecure
+            State = _transport.IsSecure
                 ? ManageSieveSessionState.Secured
                 : ManageSieveSessionState.Connected;
         }
@@ -134,7 +134,7 @@ public sealed class ManageSieveClient : IManageSieveClient
             throw new ManageSieveProtocolException("The server did not advertise STARTTLS.");
         }
 
-        await commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             using CancellationTokenSource timeout = CreateTimeout(
@@ -145,8 +145,8 @@ public sealed class ManageSieveClient : IManageSieveClient
             ManageSieveResponse response = await ReadAsync(timeout.Token).ConfigureAwait(false);
             ThrowForFailure("STARTTLS", response);
 
-            await transport!.UpgradeTlsAsync(Options.Host, timeout.Token).ConfigureAwait(false);
-            reader = new ManageSieveProtocolReader(transport.Stream);
+            await _transport!.UpgradeTlsAsync(Options.Host, timeout.Token).ConfigureAwait(false);
+            _reader = new ManageSieveProtocolReader(_transport.Stream);
             State = ManageSieveSessionState.Secured;
 
             ManageSieveResponse capabilities = await ReadAsync(timeout.Token).ConfigureAwait(false);
@@ -155,7 +155,7 @@ public sealed class ManageSieveClient : IManageSieveClient
         }
         finally
         {
-            commandLock.Release();
+            _commandLock.Release();
         }
     }
 
@@ -182,15 +182,15 @@ public sealed class ManageSieveClient : IManageSieveClient
                 "The server did not advertise the selected SASL mechanism.");
         }
 
-        await commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             using CancellationTokenSource timeout = CreateTimeout(
                 Options.OperationTimeout,
                 cancellationToken);
             var exchange = new ManageSieveAuthenticationExchange(
-                transport!.Stream,
-                reader!,
+                _transport!.Stream,
+                _reader!,
                 authenticator,
                 mechanism,
                 timeout.Token);
@@ -240,7 +240,7 @@ public sealed class ManageSieveClient : IManageSieveClient
         }
         finally
         {
-            commandLock.Release();
+            _commandLock.Release();
         }
     }
 
@@ -261,7 +261,7 @@ public sealed class ManageSieveClient : IManageSieveClient
             },
             [ManageSieveSessionState.Authenticated],
             cancellationToken).ConfigureAwait(false);
-        State = transport!.IsSecure
+        State = _transport!.IsSecure
             ? ManageSieveSessionState.Secured
             : ManageSieveSessionState.Connected;
     }
@@ -430,14 +430,14 @@ public sealed class ManageSieveClient : IManageSieveClient
 
     public async ValueTask DisposeAsync()
     {
-        if (disposed)
+        if (_disposed)
         {
             return;
         }
 
-        disposed = true;
+        _disposed = true;
         await ResetTransportAsync().ConfigureAwait(false);
-        commandLock.Dispose();
+        _commandLock.Dispose();
         State = ManageSieveSessionState.Closed;
         Capabilities = null;
     }
@@ -464,7 +464,7 @@ public sealed class ManageSieveClient : IManageSieveClient
     {
         ThrowIfDisposed();
         EnsureState([.. allowedStates]);
-        await commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        await _commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
         try
         {
             using CancellationTokenSource timeout = CreateTimeout(
@@ -487,7 +487,7 @@ public sealed class ManageSieveClient : IManageSieveClient
         }
         finally
         {
-            commandLock.Release();
+            _commandLock.Release();
         }
     }
 
@@ -497,14 +497,14 @@ public sealed class ManageSieveClient : IManageSieveClient
     {
         foreach (ReadOnlyMemory<byte> frame in frames)
         {
-            await transport!.Stream.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
+            await _transport!.Stream.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
         }
 
-        await transport!.Stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+        await _transport!.Stream.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     private ValueTask<ManageSieveResponse> ReadAsync(CancellationToken cancellationToken) =>
-        reader!.ReadResponseAsync(cancellationToken);
+        _reader!.ReadResponseAsync(cancellationToken);
 
     private static void ThrowForFailure(string command, ManageSieveResponse response)
     {
@@ -557,9 +557,9 @@ public sealed class ManageSieveClient : IManageSieveClient
 
     private async ValueTask ResetTransportAsync()
     {
-        IManageSieveTransport? transportToDispose = transport;
-        transport = null;
-        reader = null;
+        IManageSieveTransport? transportToDispose = _transport;
+        _transport = null;
+        _reader = null;
         Capabilities = null;
         State = ManageSieveSessionState.Disconnected;
 
@@ -571,6 +571,6 @@ public sealed class ManageSieveClient : IManageSieveClient
 
     private void ThrowIfDisposed()
     {
-        ObjectDisposedException.ThrowIf(disposed, this);
+        ObjectDisposedException.ThrowIf(_disposed, this);
     }
 }

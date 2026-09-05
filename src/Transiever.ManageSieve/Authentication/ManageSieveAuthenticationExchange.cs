@@ -1,4 +1,3 @@
-using System.Buffers;
 using System.Buffers.Text;
 using System.Security.Cryptography;
 using Transiever.ManageSieve;
@@ -15,12 +14,12 @@ internal enum ManageSieveAuthenticationRecovery
 
 internal sealed class ManageSieveAuthenticationExchange
 {
-    private readonly Stream stream;
-    private readonly ManageSieveProtocolReader reader;
-    private readonly IManageSieveAuthenticator authenticator;
-    private readonly string mechanism;
-    private readonly CancellationToken cancellationToken;
-    private bool authenticatorProcessingBegan;
+    private readonly Stream _stream;
+    private readonly ManageSieveProtocolReader _reader;
+    private readonly IManageSieveAuthenticator _authenticator;
+    private readonly string _mechanism;
+    private readonly CancellationToken _cancellationToken;
+    private bool _authenticatorProcessingBegan;
 
     public ManageSieveAuthenticationExchange(
         Stream stream,
@@ -29,11 +28,11 @@ internal sealed class ManageSieveAuthenticationExchange
         string mechanism,
         CancellationToken cancellationToken)
     {
-        this.stream = stream;
-        this.reader = reader;
-        this.authenticator = authenticator;
-        this.mechanism = mechanism;
-        this.cancellationToken = cancellationToken;
+        _stream = stream;
+        _reader = reader;
+        _authenticator = authenticator;
+        _mechanism = mechanism;
+        _cancellationToken = cancellationToken;
     }
 
     public ManageSieveAuthenticationRecovery Recovery { get; private set; }
@@ -48,8 +47,8 @@ internal sealed class ManageSieveAuthenticationExchange
 
             while (true)
             {
-                ManageSieveResponse response = await reader.ReadResponseAsync(
-                    cancellationToken,
+                ManageSieveResponse response = await _reader.ReadResponseAsync(
+                    _cancellationToken,
                     allowAuthenticationChallenge: true).ConfigureAwait(false);
                 switch (response.Status)
                 {
@@ -79,13 +78,13 @@ internal sealed class ManageSieveAuthenticationExchange
 
     private async ValueTask<ReadOnlyMemory<byte>?> GetInitialResponseAsync()
     {
-        authenticatorProcessingBegan = true;
+        _authenticatorProcessingBegan = true;
         try
         {
-            return await authenticator.GetInitialResponseAsync(cancellationToken)
+            return await _authenticator.GetInitialResponseAsync(_cancellationToken)
                 .ConfigureAwait(false);
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (_cancellationToken.IsCancellationRequested)
         {
             throw;
         }
@@ -100,14 +99,14 @@ internal sealed class ManageSieveAuthenticationExchange
         ReadOnlyMemory<byte>? initialResponse)
     {
         byte[] frame = ManageSieveCommandSerializer.Authentication(
-            mechanism,
+            _mechanism,
             initialResponse);
         try
         {
-            cancellationToken.ThrowIfCancellationRequested();
+            _cancellationToken.ThrowIfCancellationRequested();
             Recovery = ManageSieveAuthenticationRecovery.DisconnectRequired;
-            await stream.WriteAsync(frame, cancellationToken).ConfigureAwait(false);
-            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await _stream.WriteAsync(frame, _cancellationToken).ConfigureAwait(false);
+            await _stream.FlushAsync(_cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -142,10 +141,10 @@ internal sealed class ManageSieveAuthenticationExchange
             ReadOnlyMemory<byte> answer;
             try
             {
-                answer = await authenticator.RespondAsync(challenge, cancellationToken)
+                answer = await _authenticator.RespondAsync(challenge, _cancellationToken)
                     .ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (_cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
@@ -164,8 +163,8 @@ internal sealed class ManageSieveAuthenticationExchange
 
         try
         {
-            await stream.WriteAsync(responseFrame, cancellationToken).ConfigureAwait(false);
-            await stream.FlushAsync(cancellationToken).ConfigureAwait(false);
+            await _stream.WriteAsync(responseFrame, _cancellationToken).ConfigureAwait(false);
+            await _stream.FlushAsync(_cancellationToken).ConfigureAwait(false);
         }
         finally
         {
@@ -186,10 +185,10 @@ internal sealed class ManageSieveAuthenticationExchange
 
             try
             {
-                await authenticator.CompleteAsync(completionData, cancellationToken)
+                await _authenticator.CompleteAsync(completionData, _cancellationToken)
                     .ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (_cancellationToken.IsCancellationRequested)
             {
                 throw;
             }
@@ -213,15 +212,15 @@ internal sealed class ManageSieveAuthenticationExchange
 
     private void AbortAfterFailure()
     {
-        if (!authenticatorProcessingBegan)
+        if (!_authenticatorProcessingBegan)
         {
             return;
         }
 
-        authenticatorProcessingBegan = false;
+        _authenticatorProcessingBegan = false;
         try
         {
-            authenticator.Abort();
+            _authenticator.Abort();
         }
         catch
         {
@@ -257,48 +256,14 @@ internal sealed class ManageSieveAuthenticationExchange
         ReadOnlySpan<byte> encoded,
         string errorMessage)
     {
-        int padding = encoded.Length switch
-        {
-            > 1 when encoded[^2..].SequenceEqual("=="u8) => 2,
-            > 0 when encoded[^1] == (byte)'=' => 1,
-            _ => 0
-        };
-        int contentLength = encoded.Length - padding;
-        bool invalid = encoded.Length % 4 != 0;
-        for (int index = 0; !invalid && index < contentLength; index++)
-        {
-            byte value = encoded[index];
-            invalid = value is not (>= (byte)'A' and <= (byte)'Z') and
-                not (>= (byte)'a' and <= (byte)'z') and
-                not (>= (byte)'0' and <= (byte)'9') and
-                not ((byte)'+' or (byte)'/');
-        }
-
-        for (int index = contentLength; !invalid && index < encoded.Length; index++)
-        {
-            invalid = encoded[index] != (byte)'=';
-        }
-
-        if (invalid)
+        if (!Base64.IsValid(encoded, out int decodedLength) ||
+            encoded.Length != ((decodedLength + 2) / 3) * 4)
         {
             throw new ManageSieveProtocolException(errorMessage);
         }
 
-        byte[] decoded = GC.AllocateUninitializedArray<byte>(
-            encoded.Length / 4 * 3 - padding);
-        OperationStatus status = Base64.DecodeFromUtf8(
-            encoded,
-            decoded,
-            out int consumed,
-            out int written);
-        if (status != OperationStatus.Done ||
-            consumed != encoded.Length ||
-            written != decoded.Length)
-        {
-            CryptographicOperations.ZeroMemory(decoded);
-            throw new ManageSieveProtocolException(errorMessage);
-        }
-
+        byte[] decoded = GC.AllocateUninitializedArray<byte>(decodedLength);
+        Base64.DecodeFromUtf8(encoded, decoded, out _, out _);
         return decoded;
     }
 }

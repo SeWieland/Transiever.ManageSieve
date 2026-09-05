@@ -7,7 +7,7 @@ namespace Transiever.ManageSieve;
 /// <summary>SCRAM-SHA-256 SASL authenticator.</summary>
 public sealed class ManageSieveScramSha256Authenticator : IManageSieveAuthenticator
 {
-    private readonly ScramSha256Exchange exchange;
+    private readonly ScramSha256Exchange _exchange;
 
     public ManageSieveScramSha256Authenticator(
         string userName, string password, string? authorizationIdentity = null)
@@ -30,28 +30,23 @@ public sealed class ManageSieveScramSha256Authenticator : IManageSieveAuthentica
         }
         string nonce = nonceFactory();
         ValidateNonce(nonce);
-        exchange = new ScramSha256Exchange(userName, password, authorizationIdentity, nonce);
+        _exchange = new ScramSha256Exchange(userName, password, authorizationIdentity, nonce);
     }
 
     public string Mechanism => "SCRAM-SHA-256";
 
     public bool AllowsUnprotectedConnection => false;
 
-    public ValueTask<ReadOnlyMemory<byte>?> GetInitialResponseAsync(
-        CancellationToken cancellationToken = default) =>
-        exchange.GetInitialResponseAsync(cancellationToken);
+    public ValueTask<ReadOnlyMemory<byte>?> GetInitialResponseAsync(CancellationToken cancellationToken = default) =>
+        _exchange.GetInitialResponseAsync(cancellationToken);
 
-    public ValueTask<ReadOnlyMemory<byte>> RespondAsync(
-        ReadOnlyMemory<byte> challenge,
-        CancellationToken cancellationToken = default) =>
-        exchange.RespondAsync(challenge, cancellationToken);
+    public ValueTask<ReadOnlyMemory<byte>> RespondAsync(ReadOnlyMemory<byte> challenge, CancellationToken cancellationToken = default) =>
+        _exchange.RespondAsync(challenge, cancellationToken);
 
-    public ValueTask CompleteAsync(
-        ReadOnlyMemory<byte>? serverData,
-        CancellationToken cancellationToken = default) =>
-        exchange.CompleteAsync(serverData, cancellationToken);
+    public ValueTask CompleteAsync(ReadOnlyMemory<byte>? serverData, CancellationToken cancellationToken = default) =>
+        _exchange.CompleteAsync(serverData, cancellationToken);
 
-    public void Abort() => exchange.Abort();
+    public void Abort() => _exchange.Abort();
 
     private static string CreateNonce() =>
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(18));
@@ -71,8 +66,8 @@ public sealed class ManageSieveScramSha256Authenticator : IManageSieveAuthentica
     private static void ValidateNonce(string nonce)
     {
         ArgumentNullException.ThrowIfNull(nonce);
-        if (nonce.Length is 0 or > 256 || nonce.Any(
-                character => !ScramSha256Exchange.IsPrintableNonceCharacter(character)))
+        if (nonce.Length is 0 or > 256 ||
+            nonce.Any(character => !ScramSha256Exchange.IsPrintableNonceCharacter(character)))
         {
             throw new ArgumentException("Nonce must contain printable SCRAM characters and be at most 256 bytes.", nameof(nonce));
         }

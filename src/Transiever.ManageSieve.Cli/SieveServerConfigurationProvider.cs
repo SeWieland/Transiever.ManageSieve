@@ -20,9 +20,9 @@ public interface ISieveServerConfigurationProvider
 public sealed class EnvironmentSieveServerConfigurationProvider
     : ISieveServerConfigurationProvider
 {
-    private readonly Func<string, string?> readEnvironment;
-    private readonly Func<bool> isInputRedirected;
-    private readonly Func<string> readPassword;
+    private readonly Func<string, string?> _readEnvironment;
+    private readonly Func<bool> _isInputRedirected;
+    private readonly Func<string> _readPassword;
 
     public EnvironmentSieveServerConfigurationProvider()
         : this(
@@ -37,9 +37,9 @@ public sealed class EnvironmentSieveServerConfigurationProvider
         Func<bool> isInputRedirected,
         Func<string> readPassword)
     {
-        this.readEnvironment = readEnvironment;
-        this.isInputRedirected = isInputRedirected;
-        this.readPassword = readPassword;
+        _readEnvironment = readEnvironment;
+        _isInputRedirected = isInputRedirected;
+        _readPassword = readPassword;
     }
 
     public ManageSieveClientOptions GetConnectionOptions(
@@ -47,8 +47,7 @@ public sealed class EnvironmentSieveServerConfigurationProvider
     {
         string host = options.SieveHost ?? Required("HOST");
         int port = options.SievePort ?? ReadPort();
-        ManageSieveSecurityMode security =
-            options.SieveSecurity ?? ReadSecurityMode();
+        ManageSieveSecurityMode security = options.SieveSecurity ?? ReadSecurityMode();
 
         return new ManageSieveClientOptions
         {
@@ -145,17 +144,17 @@ public sealed class EnvironmentSieveServerConfigurationProvider
     }
 
     private string? Read(string suffix) =>
-        readEnvironment($"TRANSIEVER_SIEVE_{suffix}");
+        _readEnvironment($"TRANSIEVER_SIEVE_{suffix}");
 
     private string ReadPasswordOrThrow()
     {
-        if (isInputRedirected())
+        if (_isInputRedirected())
         {
             throw new InvalidOperationException(
                 "TRANSIEVER_SIEVE_PASSWORD is required when input is redirected.");
         }
 
-        return readPassword();
+        return _readPassword();
     }
 
     private static string ReadPassword()

@@ -1,3 +1,4 @@
+using System.Buffers.Text;
 using System.Security.Cryptography;
 using System.Text;
 using Transiever.ManageSieve;
@@ -11,21 +12,21 @@ internal sealed class ScramSha256Exchange
     private const int MinimumIterations = 4_096;
     private const int MaximumIterations = 1_000_000;
     private const string AuthenticationFailure = "SCRAM-SHA-256 authentication failed.";
-    private static readonly UTF8Encoding StrictUtf8 = new(false, true);
+    private static readonly UTF8Encoding _strictUtf8 = new(false, true);
 
-    private readonly string clientFirstBare;
-    private readonly string clientNonce;
-    private readonly string encodedGs2Header;
-    private readonly string initialMessage;
-    private readonly string password;
-    private byte[]? expectedServerSignature;
-    private byte[]? response;
-    private byte[]? salt;
-    private bool aborted;
-    private bool completed;
-    private bool initialSent;
-    private bool serverFinalValidated;
-    private bool serverFirstReceived;
+    private readonly string _clientFirstBare;
+    private readonly string _clientNonce;
+    private readonly string _encodedGs2Header;
+    private readonly string _initialMessage;
+    private readonly string _password;
+    private byte[]? _expectedServerSignature;
+    private byte[]? _response;
+    private byte[]? _salt;
+    private bool _aborted;
+    private bool _completed;
+    private bool _initialSent;
+    private bool _serverFinalValidated;
+    private bool _serverFirstReceived;
 
     internal ScramSha256Exchange(
         string userName, string password, string? authorizationIdentity, string nonce)
@@ -34,31 +35,31 @@ internal sealed class ScramSha256Exchange
         string gs2Header = string.IsNullOrEmpty(authorizationIdentity)
             ? "n,,"
             : $"n,a={EscapeIdentity(authorizationIdentity)},";
-        clientFirstBare = $"n={user},r={nonce}";
-        clientNonce = nonce;
-        encodedGs2Header = Convert.ToBase64String(Encoding.UTF8.GetBytes(gs2Header));
-        initialMessage = $"{gs2Header}{clientFirstBare}";
-        this.password = password;
+        _clientFirstBare = $"n={user},r={nonce}";
+        _clientNonce = nonce;
+        _encodedGs2Header = Convert.ToBase64String(Encoding.UTF8.GetBytes(gs2Header));
+        _initialMessage = $"{gs2Header}{_clientFirstBare}";
+        _password = password;
     }
 
-    internal ReadOnlyMemory<byte> Salt => salt;
+    internal ReadOnlyMemory<byte> Salt => _salt;
 
-    internal ReadOnlyMemory<byte> ExpectedServerSignature => expectedServerSignature;
+    internal ReadOnlyMemory<byte> ExpectedServerSignature => _expectedServerSignature;
 
     internal ValueTask<ReadOnlyMemory<byte>?> GetInitialResponseAsync(
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (initialSent || aborted || completed)
+        if (_initialSent || _aborted || _completed)
         {
             Abort();
             throw CreateAuthenticationFailure();
         }
 
         ClearResponse();
-        response = Encoding.UTF8.GetBytes(initialMessage);
-        initialSent = true;
-        return ValueTask.FromResult<ReadOnlyMemory<byte>?>(response);
+        _response = Encoding.UTF8.GetBytes(_initialMessage);
+        _initialSent = true;
+        return ValueTask.FromResult<ReadOnlyMemory<byte>?>(_response);
     }
 
     internal ValueTask<ReadOnlyMemory<byte>> RespondAsync(
@@ -66,25 +67,25 @@ internal sealed class ScramSha256Exchange
         CancellationToken cancellationToken)
     {
         cancellationToken.ThrowIfCancellationRequested();
-        if (!initialSent || serverFinalValidated || aborted || completed)
+        if (!_initialSent || _serverFinalValidated || _aborted || _completed)
         {
             Abort();
             throw CreateAuthenticationFailure();
         }
 
-        if (serverFirstReceived)
+        if (_serverFirstReceived)
         {
             try
             {
                 ValidateServerFinal(challenge.Span);
-                serverFinalValidated = true;
+                _serverFinalValidated = true;
                 ClearRetainedData();
-                response = [];
-                return ValueTask.FromResult<ReadOnlyMemory<byte>>(response);
+                _response = [];
+                return ValueTask.FromResult<ReadOnlyMemory<byte>>(_response);
             }
             catch
             {
-                aborted = true;
+                _aborted = true;
                 ClearRetainedData();
                 throw;
             }
@@ -96,22 +97,22 @@ internal sealed class ScramSha256Exchange
         try
         {
             string serverFirst = ParseServerFirst(
-                challenge.Span, clientNonce, out string serverNonce,
+                challenge.Span, _clientNonce, out string serverNonce,
                 out byte[] parsedSalt, out int parsedIterations);
             decodedSalt = parsedSalt;
-            string finalWithoutProof = $"c={encodedGs2Header},r={serverNonce}";
-            string completeAuthMessage = $"{clientFirstBare},{serverFirst},{finalWithoutProof}";
+            string finalWithoutProof = $"c={_encodedGs2Header},r={serverNonce}";
+            string completeAuthMessage = $"{_clientFirstBare},{serverFirst},{finalWithoutProof}";
             finalResponse = CreateClientFinal(
-                password, parsedSalt, parsedIterations, completeAuthMessage,
+                _password, parsedSalt, parsedIterations, completeAuthMessage,
                 finalWithoutProof, out byte[] derivedServerSignature);
             serverSignature = derivedServerSignature;
 
             ClearResponse();
             ClearExpectedServerSignature();
-            response = finalResponse;
-            salt = parsedSalt;
-            expectedServerSignature = derivedServerSignature;
-            serverFirstReceived = true;
+            _response = finalResponse;
+            _salt = parsedSalt;
+            _expectedServerSignature = derivedServerSignature;
+            _serverFirstReceived = true;
 
             byte[] transferredResponse = finalResponse;
             decodedSalt = null;
@@ -121,13 +122,13 @@ internal sealed class ScramSha256Exchange
         }
         catch (CryptographicException)
         {
-            aborted = true;
+            _aborted = true;
             ClearRetainedData();
             throw CreateAuthenticationFailure();
         }
         catch
         {
-            aborted = true;
+            _aborted = true;
             ClearRetainedData();
             throw;
         }
@@ -146,24 +147,24 @@ internal sealed class ScramSha256Exchange
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            if (!serverFirstReceived || aborted || completed ||
-                (serverFinalValidated ? serverData is not null : serverData is null))
+            if (!_serverFirstReceived || _aborted || _completed ||
+                (_serverFinalValidated ? serverData is not null : serverData is null))
             {
                 throw CreateAuthenticationFailure();
             }
 
-            if (!serverFinalValidated)
+            if (!_serverFinalValidated)
             {
                 ValidateServerFinal(serverData!.Value.Span);
-                serverFinalValidated = true;
+                _serverFinalValidated = true;
             }
 
-            completed = true;
+            _completed = true;
             return ValueTask.CompletedTask;
         }
         catch (ManageSieveAuthenticationException)
         {
-            aborted = true;
+            _aborted = true;
             throw;
         }
         finally
@@ -174,7 +175,7 @@ internal sealed class ScramSha256Exchange
 
     internal void Abort()
     {
-        aborted = true;
+        _aborted = true;
         ClearRetainedData();
     }
 
@@ -182,7 +183,7 @@ internal sealed class ScramSha256Exchange
     {
         ClearResponse();
         ClearExpectedServerSignature();
-        byte[]? saltToClear = Interlocked.Exchange(ref salt, null);
+        byte[]? saltToClear = Interlocked.Exchange(ref _salt, null);
         if (saltToClear is not null)
         {
             CryptographicOperations.ZeroMemory(saltToClear);
@@ -201,8 +202,8 @@ internal sealed class ScramSha256Exchange
         byte[] signature = DecodeCanonicalBase64(attributes[0][2..]);
         try
         {
-            if (signature.Length != 32 || expectedServerSignature is null ||
-                !CryptographicOperations.FixedTimeEquals(signature, expectedServerSignature))
+            if (signature.Length != 32 || _expectedServerSignature is null ||
+                !CryptographicOperations.FixedTimeEquals(signature, _expectedServerSignature))
             {
                 throw CreateAuthenticationFailure();
             }
@@ -325,7 +326,7 @@ internal sealed class ScramSha256Exchange
 
         try
         {
-            message = StrictUtf8.GetString(data);
+            message = _strictUtf8.GetString(data);
         }
         catch (DecoderFallbackException)
         {
@@ -350,40 +351,15 @@ internal sealed class ScramSha256Exchange
 
     private static byte[] DecodeCanonicalBase64(string value)
     {
-        if (value.Length is 0 or > 1_368 || value.Length % 4 != 0)
+        if (value.Length is 0 or > 1_368 ||
+            !Base64.IsValid(value.AsSpan(), out int decodedLength) ||
+            value.Length != ((decodedLength + 2) / 3) * 4 ||
+            decodedLength is 0 or > MaximumSaltLength)
         {
             throw CreateAuthenticationFailure();
         }
 
-        int padding = value.EndsWith("==", StringComparison.Ordinal)
-            ? 2
-            : value.EndsWith('=') ? 1 : 0;
-        int decodedLength = value.Length / 4 * 3 - padding;
-        if (decodedLength is 0 or > MaximumSaltLength ||
-            value.AsSpan(0, value.Length - padding).ContainsAnyExcept(
-                "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"))
-        {
-            throw CreateAuthenticationFailure();
-        }
-
-        for (int index = value.Length - padding; index < value.Length; index++)
-        {
-            if (value[index] != '=')
-            {
-                throw CreateAuthenticationFailure();
-            }
-        }
-
-        byte[] decoded = new byte[decodedLength];
-        if (!Convert.TryFromBase64String(value, decoded, out int written) ||
-            written != decodedLength ||
-            !string.Equals(Convert.ToBase64String(decoded), value, StringComparison.Ordinal))
-        {
-            CryptographicOperations.ZeroMemory(decoded);
-            throw CreateAuthenticationFailure();
-        }
-
-        return decoded;
+        return Convert.FromBase64String(value);
     }
 
     private static ManageSieveAuthenticationException CreateAuthenticationFailure() =>
@@ -399,7 +375,7 @@ internal sealed class ScramSha256Exchange
 
     private void ClearResponse()
     {
-        byte[]? toClear = Interlocked.Exchange(ref response, null);
+        byte[]? toClear = Interlocked.Exchange(ref _response, null);
         if (toClear is not null)
         {
             CryptographicOperations.ZeroMemory(toClear);
@@ -408,7 +384,7 @@ internal sealed class ScramSha256Exchange
 
     private void ClearExpectedServerSignature()
     {
-        byte[]? toClear = Interlocked.Exchange(ref expectedServerSignature, null);
+        byte[]? toClear = Interlocked.Exchange(ref _expectedServerSignature, null);
         if (toClear is not null)
         {
             CryptographicOperations.ZeroMemory(toClear);

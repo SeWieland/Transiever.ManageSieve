@@ -4,10 +4,10 @@ namespace Transiever.ManageSieve.Cli;
 
 public sealed class ManageSieveCliApplication
 {
-    private readonly IManageSieveClientFactory clientFactory;
-    private readonly ISieveServerConfigurationProvider configurationProvider;
-    private readonly Stream standardOutput;
-    private readonly TextWriter textOutput;
+    private readonly IManageSieveClientFactory _clientFactory;
+    private readonly ISieveServerConfigurationProvider _configurationProvider;
+    private readonly Stream _standardOutput;
+    private readonly TextWriter _textOutput;
 
     public ManageSieveCliApplication(
         IManageSieveClientFactory clientFactory,
@@ -15,10 +15,10 @@ public sealed class ManageSieveCliApplication
         Stream standardOutput,
         TextWriter textOutput)
     {
-        this.clientFactory = clientFactory;
-        this.configurationProvider = configurationProvider;
-        this.standardOutput = standardOutput;
-        this.textOutput = textOutput;
+        _clientFactory = clientFactory;
+        _configurationProvider = configurationProvider;
+        _standardOutput = standardOutput;
+        _textOutput = textOutput;
     }
 
     public async Task<int> RunAsync(
@@ -61,13 +61,12 @@ public sealed class ManageSieveCliApplication
         CommandLineOptions options,
         CancellationToken cancellationToken)
     {
-        ManageSieveClientOptions connectionOptions =
-            configurationProvider.GetConnectionOptions(options);
+        ManageSieveClientOptions connectionOptions = _configurationProvider.GetConnectionOptions(options);
         await using IManageSieveClient client =
             await ConnectAsync(connectionOptions, cancellationToken);
         ManageSieveCapabilities capabilities =
             await client.RefreshCapabilitiesAsync(cancellationToken);
-        ConsolePresentation.PrintCapabilities(textOutput, capabilities);
+        ConsolePresentation.PrintCapabilities(_textOutput, capabilities);
     }
 
     private async Task ListScriptsAsync(
@@ -78,7 +77,7 @@ public sealed class ManageSieveCliApplication
             await ConnectAuthenticatedAsync(options, cancellationToken);
         IReadOnlyList<ManageSieveScriptInfo> scripts =
             await client.ListScriptsAsync(cancellationToken);
-        ConsolePresentation.PrintScripts(textOutput, scripts);
+        ConsolePresentation.PrintScripts(_textOutput, scripts);
     }
 
     private async Task GetScriptAsync(
@@ -96,11 +95,11 @@ public sealed class ManageSieveCliApplication
                 outputFile,
                 script.Content.ToArray(),
                 cancellationToken);
-            textOutput.WriteLine($"Wrote {outputFile}.");
+            _textOutput.WriteLine($"Wrote {outputFile}.");
             return;
         }
 
-        await standardOutput.WriteAsync(script.Content, cancellationToken);
+        await _standardOutput.WriteAsync(script.Content, cancellationToken);
     }
 
     private async Task CheckScriptAsync(
@@ -114,7 +113,7 @@ public sealed class ManageSieveCliApplication
             await ConnectAuthenticatedAsync(options, cancellationToken);
         ManageSieveCommandResult result =
             await client.CheckScriptAsync(content, cancellationToken);
-        ConsolePresentation.PrintResult(textOutput, "Script is valid.", result);
+        ConsolePresentation.PrintResult(_textOutput, "Script is valid.", result);
     }
 
     private async Task PutScriptAsync(
@@ -132,7 +131,7 @@ public sealed class ManageSieveCliApplication
                 content,
                 cancellationToken);
         ConsolePresentation.PrintResult(
-            textOutput,
+            _textOutput,
             $"Uploaded '{options.ScriptName}'.",
             result);
 
@@ -143,7 +142,7 @@ public sealed class ManageSieveCliApplication
                     options.ScriptName,
                     cancellationToken);
             ConsolePresentation.PrintResult(
-                textOutput,
+                _textOutput,
                 $"Activated '{options.ScriptName}'.",
                 activation);
         }
@@ -160,7 +159,7 @@ public sealed class ManageSieveCliApplication
                 options.ScriptName,
                 cancellationToken);
         ConsolePresentation.PrintResult(
-            textOutput,
+            _textOutput,
             $"Activated '{options.ScriptName}'.",
             result);
     }
@@ -174,7 +173,7 @@ public sealed class ManageSieveCliApplication
         ManageSieveCommandResult result =
             await client.SetActiveScriptAsync(null, cancellationToken);
         ConsolePresentation.PrintResult(
-            textOutput,
+            _textOutput,
             "Deactivated Sieve processing.",
             result);
     }
@@ -190,7 +189,7 @@ public sealed class ManageSieveCliApplication
                 options.ScriptName!,
                 cancellationToken);
         ConsolePresentation.PrintResult(
-            textOutput,
+            _textOutput,
             $"Deleted '{options.ScriptName}'.",
             result);
     }
@@ -201,17 +200,15 @@ public sealed class ManageSieveCliApplication
     {
         // Credentials are requested only after TLS and capability validation.
         ManageSieveClientOptions connectionOptions =
-            configurationProvider.GetConnectionOptions(options);
+            _configurationProvider.GetConnectionOptions(options);
         if (connectionOptions.SecurityMode == ManageSieveSecurityMode.PlainText)
         {
             throw new InvalidOperationException(
                 "msieve does not send credentials over a plaintext ManageSieve connection.");
         }
 
-        ManageSieveSaslMechanism requestedMechanism =
-            configurationProvider.GetSaslMechanism(options);
-        IManageSieveClient client =
-            await ConnectAsync(connectionOptions, cancellationToken);
+        ManageSieveSaslMechanism requestedMechanism = _configurationProvider.GetSaslMechanism(options);
+        IManageSieveClient client = await ConnectAsync(connectionOptions, cancellationToken);
 
         try
         {
@@ -221,8 +218,7 @@ public sealed class ManageSieveCliApplication
                 requestedMechanism,
                 capabilities.SaslMechanisms);
 
-            SieveServerConfiguration configuration =
-                configurationProvider.GetAuthenticatedConfiguration(options);
+            SieveServerConfiguration configuration = _configurationProvider.GetAuthenticatedConfiguration(options);
             IManageSieveAuthenticator authenticator = selectedMechanism switch
             {
                 "SCRAM-SHA-256" => new ManageSieveScramSha256Authenticator(
@@ -283,7 +279,7 @@ public sealed class ManageSieveCliApplication
         ManageSieveClientOptions options,
         CancellationToken cancellationToken)
     {
-        IManageSieveClient client = clientFactory.CreateClient(options);
+        IManageSieveClient client = _clientFactory.CreateClient(options);
         try
         {
             await client.ConnectAsync(cancellationToken);

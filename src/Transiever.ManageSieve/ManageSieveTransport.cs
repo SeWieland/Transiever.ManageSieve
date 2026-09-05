@@ -35,19 +35,19 @@ internal sealed class TcpManageSieveTransport(
     RemoteCertificateValidationCallback? certificateValidationCallback)
     : IManageSieveTransport
 {
-    private readonly TcpClient client = new();
-    private Stream? stream;
+    private readonly TcpClient _client = new();
+    private Stream? _stream;
 
     public Stream Stream =>
-        stream ?? throw new InvalidOperationException("The transport is not connected.");
+        _stream ?? throw new InvalidOperationException("The transport is not connected.");
 
-    public bool IsSecure => stream is SslStream;
+    public bool IsSecure => _stream is SslStream;
 
     public async ValueTask ConnectAsync(CancellationToken cancellationToken)
     {
-        await client.ConnectAsync(options.Host, options.Port, cancellationToken)
+        await _client.ConnectAsync(options.Host, options.Port, cancellationToken)
             .ConfigureAwait(false);
-        stream = client.GetStream();
+        _stream = _client.GetStream();
     }
 
     public async ValueTask UpgradeTlsAsync(
@@ -65,16 +65,16 @@ internal sealed class TcpManageSieveTransport(
                 EnabledSslProtocols = SslProtocols.None
             },
             cancellationToken).ConfigureAwait(false);
-        stream = ssl;
+        _stream = ssl;
     }
 
     public async ValueTask DisposeAsync()
     {
-        if (stream is not null)
+        if (_stream is not null)
         {
-            await stream.DisposeAsync().ConfigureAwait(false);
+            await _stream.DisposeAsync().ConfigureAwait(false);
         }
 
-        client.Dispose();
+        _client.Dispose();
     }
 }
