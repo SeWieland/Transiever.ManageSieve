@@ -24,6 +24,14 @@ Commands that the pinned server rejects remain covered by deterministic client t
 `Transiever.ManageSieve.LiveTest` is skipped unless explicitly enabled.
 Live tests are for provider interoperability checks only and must remain non-destructive by default.
 
+## SCRAM-SHA-256 Conformance
+
+SCRAM coverage is deterministic and offline through the existing `SaslConformanceHarness`.
+The `SCRAM-SHA-256` cases consume the shared SASL lifecycle and assert callback order, exact Base64-wrapped client-first, server-first, client-final, and server-final frames, SHA-256 known-answer proof and server-signature values, both final-data forms, bounds, replay rejection, fixed-time proof validation, redaction, and cleanup.
+The known-answer case is based on the published RFC 7677 SHA-256 vector; the internal nonce seam makes the wire exchange repeatable without a live server.
+Tests use synthetic credentials and distinct secret sentinels only.
+They do not contact providers, require provider credentials, or treat copied transcript bytes as zeroizable authenticator-owned memory.
+
 ## Unit Coverage Priorities
 
 Prioritize:

@@ -22,6 +22,7 @@ public static class ConsolePresentation
         output.WriteLine("  --sieve-username <name>      Override TRANSIEVER_SIEVE_USERNAME.");
         output.WriteLine("  --sieve-password <value>     Override TRANSIEVER_SIEVE_PASSWORD.");
         output.WriteLine("  --sieve-security-mode <mode> Override TRANSIEVER_SIEVE_SECURITY_MODE.");
+        output.WriteLine("  --sieve-sasl-mechanism <mode> auto, plain, or scram-sha-256.");
         output.WriteLine("  -h, --help                   Show this help.");
         output.WriteLine();
         output.WriteLine("The default security mode is StartTlsRequired on port 4190.");

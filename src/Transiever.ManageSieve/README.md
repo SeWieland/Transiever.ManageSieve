@@ -29,11 +29,30 @@ For a human-oriented overview and tool picker, see the [Transiever ManageSieve g
 * `ManageSieveCapabilities` exposes standard capabilities and preserves unknown capability values.
 * `ManageSieveCommandResult` exposes server messages, response codes, and warnings.
 * `ManageSievePlainAuthenticator` provides SASL PLAIN and is rejected on an unsecured connection.
+* `ManageSieveScramSha256Authenticator` provides the protected `SCRAM-SHA-256` password exchange.
 * Typed exceptions distinguish connection, authentication, protocol, and command failures.
 
 See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md) for the SASL lifecycle, security, memory ownership, diagnostics, and failure contract.
 
 See the [architecture guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/architecture.md) for protocol constraints and the [testing guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/testing.md) for test policy.
+
+### SCRAM-SHA-256
+
+Construct `ManageSieveScramSha256Authenticator` with a printable-ASCII user name, password, and optional authorization identity:
+
+```csharp
+IManageSieveAuthenticator authenticator =
+    new ManageSieveScramSha256Authenticator("user", password, authorizationIdentity: null);
+
+await client.StartTlsAsync();
+await client.AuthenticateAsync(authenticator);
+```
+
+The mechanism name is exactly `SCRAM-SHA-256`, and it refuses an unprotected connection.
+User names, passwords, and authorization identities are limited to printable ASCII and 1,024 bytes; a user name is required, a password may be empty, and the authorization identity is optional.
+The client uses an 18-byte cryptographically random nonce encoded with standard Base64 for production exchanges.
+The deterministic nonce seam is internal test behavior and is not part of the public API.
+The exchange contract, bounds, proof validation, diagnostics, and cleanup ownership are defined in the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md).
 
 ## Script operations
 

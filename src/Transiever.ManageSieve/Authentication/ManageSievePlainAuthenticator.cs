@@ -12,7 +12,7 @@ public sealed class ManageSievePlainAuthenticator(
     string? authorizationIdentity = null)
     : IManageSieveAuthenticator
 {
-    private byte[]? response;
+    private byte[]? _response;
 
     public string Mechanism => "PLAIN";
 
@@ -34,7 +34,7 @@ public sealed class ManageSievePlainAuthenticator(
             secret.CopyTo(
                 credentialResponse,
                 authorization.Length + authenticationIdentity.Length + 2);
-            response = credentialResponse;
+            _response = credentialResponse;
             return ValueTask.FromResult<ReadOnlyMemory<byte>?>(credentialResponse);
         }
         catch
@@ -75,7 +75,7 @@ public sealed class ManageSievePlainAuthenticator(
 
     private void ClearResponse()
     {
-        byte[]? responseToClear = Interlocked.Exchange(ref response, null);
+        byte[]? responseToClear = Interlocked.Exchange(ref _response, null);
         if (responseToClear is not null)
         {
             CryptographicOperations.ZeroMemory(responseToClear);

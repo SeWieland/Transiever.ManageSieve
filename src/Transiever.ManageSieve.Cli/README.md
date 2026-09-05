@@ -75,13 +75,26 @@ TRANSIEVER_SIEVE_PORT=4190
 TRANSIEVER_SIEVE_USERNAME=user@example.com
 TRANSIEVER_SIEVE_PASSWORD=secret
 TRANSIEVER_SIEVE_SECURITY_MODE=StartTlsRequired
+TRANSIEVER_SIEVE_SASL_MECHANISM=auto
 ```
 
 Use `--sieve-host`, `--sieve-port`, `--sieve-username`, `--sieve-password`,
-and `--sieve-security-mode` to override those values for a targeted command.
+`--sieve-security-mode`, and `--sieve-sasl-mechanism` to override those values
+for a targeted command.
 The port and security mode are optional.
 The default is port `4190` with required STARTTLS.
 `ImplicitTls` is also supported.
+
+Authentication uses `--sieve-sasl-mechanism auto|plain|scram-sha-256` or the
+`TRANSIEVER_SIEVE_SASL_MECHANISM` environment variable.
+The precedence is command-line option, environment variable, then the default
+`auto`.
+In `auto` mode, the CLI selects `SCRAM-SHA-256` when the server advertises it
+and otherwise uses `PLAIN` when advertised.
+An explicit `plain` or `scram-sha-256` selection never downgrades to another
+mechanism if that mechanism is unavailable.
+Use `msieve capabilities` to inspect the server's advertised `SASL mechanisms`
+before choosing an explicit mechanism; this command does not authenticate.
 
 Authenticated commands refuse plaintext credentials.
 If the password variable is absent, an interactive terminal prompts without echoing it.

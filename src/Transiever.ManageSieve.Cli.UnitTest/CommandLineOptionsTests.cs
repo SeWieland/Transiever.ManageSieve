@@ -32,7 +32,9 @@ public sealed class CommandLineOptionsTests
             "--sieve-password",
             "secret",
             "--sieve-security-mode",
-            "ImplicitTls"
+            "ImplicitTls",
+            "--sieve-sasl-mechanism",
+            "scram-sha-256"
         ]);
 
         Assert.Equal(ManageSieveCliCommand.Put, options.Command);
@@ -44,6 +46,29 @@ public sealed class CommandLineOptionsTests
         Assert.Equal("user", options.SieveUserName);
         Assert.Equal("secret", options.SievePassword);
         Assert.Equal(ManageSieveSecurityMode.ImplicitTls, options.SieveSecurity);
+        Assert.Equal(ManageSieveSaslMechanism.ScramSha256, options.SieveSaslMechanism);
+    }
+
+    [Theory]
+    [InlineData("auto", ManageSieveSaslMechanism.Auto)]
+    [InlineData("plain", ManageSieveSaslMechanism.Plain)]
+    [InlineData("scram-sha-256", ManageSieveSaslMechanism.ScramSha256)]
+    public void ParseReadsSaslMechanism(string value, ManageSieveSaslMechanism expected)
+    {
+        CommandLineOptions options = CommandLineOptions.Parse(
+            ["list", "--sieve-sasl-mechanism", value]);
+
+        Assert.Equal(expected, options.SieveSaslMechanism);
+    }
+
+    [Fact]
+    public void ParseRejectsUnknownSaslMechanism()
+    {
+        ArgumentException exception = Assert.Throws<ArgumentException>(
+            () => CommandLineOptions.Parse(
+                ["list", "--sieve-sasl-mechanism", "login"]));
+
+        Assert.Contains("SASL mechanism", exception.Message);
     }
 
     [Theory]
@@ -65,6 +90,18 @@ public sealed class CommandLineOptionsTests
             () => CommandLineOptions.Parse(["list", "--unknown"]));
 
         Assert.Contains("Unknown option", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("3")]
+    [InlineData("99")]
+    public void ParseRejectsUndefinedSieveSecurityModes(string mode)
+    {
+        ArgumentException exception = Assert.Throws<ArgumentException>(
+            () => CommandLineOptions.Parse(
+                ["list", "--sieve-security-mode", mode]));
+
+        Assert.Contains("security mode", exception.Message);
     }
 
     [Fact]

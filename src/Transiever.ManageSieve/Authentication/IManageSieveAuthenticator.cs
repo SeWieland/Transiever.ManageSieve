@@ -1,5 +1,7 @@
 namespace Transiever.ManageSieve;
 
+// Compatibility note: public authentication types intentionally remain in the root namespace;
+// they will align with the Authentication folder namespace in the next major release.
 /// <summary>
 /// Supplies SASL responses for ManageSieve authentication.
 /// </summary>

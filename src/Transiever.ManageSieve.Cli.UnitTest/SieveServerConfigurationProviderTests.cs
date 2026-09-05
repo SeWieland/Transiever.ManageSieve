@@ -51,6 +51,80 @@ public sealed class SieveServerConfigurationProviderTests
     }
 
     [Fact]
+    public void SaslMechanismDefaultsToAuto()
+    {
+        var provider = CreateProvider(
+            new Dictionary<string, string?>());
+
+        Assert.Equal(
+            ManageSieveSaslMechanism.Auto,
+            provider.GetSaslMechanism(CommandLineOptions.Parse(["list"])));
+    }
+
+    [Fact]
+    public void SaslMechanismOptionOverridesEnvironment()
+    {
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "plain"
+            });
+
+        Assert.Equal(
+            ManageSieveSaslMechanism.ScramSha256,
+            provider.GetSaslMechanism(
+                CommandLineOptions.Parse(
+                    ["list", "--sieve-sasl-mechanism", "scram-sha-256"])));
+    }
+
+    [Fact]
+    public void SaslMechanismReadsEnvironment()
+    {
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "scram-sha-256"
+            });
+
+        Assert.Equal(
+            ManageSieveSaslMechanism.ScramSha256,
+            provider.GetSaslMechanism(CommandLineOptions.Parse(["list"])));
+    }
+
+    [Fact]
+    public void SaslMechanismRejectsInvalidEnvironmentValue()
+    {
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "login"
+            });
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => provider.GetSaslMechanism(CommandLineOptions.Parse(["list"])));
+
+        Assert.Contains("SASL mechanism", exception.Message);
+    }
+
+    [Theory]
+    [InlineData("3")]
+    [InlineData("99")]
+    public void ConnectionOptionsRejectUndefinedSecurityModeFromEnvironment(string mode)
+    {
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_HOST"] = "sieve.example.com",
+                ["TRANSIEVER_SIEVE_SECURITY_MODE"] = mode
+            });
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => provider.GetConnectionOptions(CommandLineOptions.Parse(["list"])));
+
+        Assert.Contains("security mode", exception.Message);
+    }
+
+    [Fact]
     public void AuthenticatedConfigurationReadsCredentials()
     {
         var provider = CreateProvider(

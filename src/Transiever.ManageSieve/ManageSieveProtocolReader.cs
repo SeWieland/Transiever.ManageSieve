@@ -6,7 +6,7 @@ namespace Transiever.ManageSieve;
 
 internal sealed class ManageSieveProtocolReader(Stream stream)
 {
-    private readonly Stream stream = stream ?? throw new ArgumentNullException(nameof(stream));
+    private readonly Stream _stream = stream ?? throw new ArgumentNullException(nameof(stream));
 
     public async ValueTask<ManageSieveResponse> ReadResponseAsync(
         CancellationToken cancellationToken,
@@ -451,7 +451,7 @@ internal sealed class ManageSieveProtocolReader(Stream stream)
         bool sawCr = false;
         while (true)
         {
-            int read = await stream.ReadAsync(oneByte, cancellationToken).ConfigureAwait(false);
+            int read = await _stream.ReadAsync(oneByte, cancellationToken).ConfigureAwait(false);
             if (read == 0)
             {
                 throw new ManageSieveConnectionException(
@@ -483,7 +483,7 @@ internal sealed class ManageSieveProtocolReader(Stream stream)
         int position = 0;
         while (position < buffer.Length)
         {
-            int read = await stream.ReadAsync(buffer[position..], cancellationToken)
+            int read = await _stream.ReadAsync(buffer[position..], cancellationToken)
                 .ConfigureAwait(false);
             if (read == 0)
             {
