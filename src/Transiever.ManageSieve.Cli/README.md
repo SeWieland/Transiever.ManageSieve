@@ -85,14 +85,21 @@ The port and security mode are optional.
 The default is port `4190` with required STARTTLS.
 `ImplicitTls` is also supported.
 
-Authentication uses `--sieve-sasl-mechanism auto|plain|scram-sha-256` or the
+Authentication uses `--sieve-sasl-mechanism auto|plain|scram-sha-256|scram-sha-256-plus` or the
 `TRANSIEVER_SIEVE_SASL_MECHANISM` environment variable.
 The precedence is command-line option, environment variable, then the default
 `auto`.
-In `auto` mode, the CLI selects `SCRAM-SHA-256` when the server advertises it
-and otherwise uses `PLAIN` when advertised.
-An explicit `plain` or `scram-sha-256` selection never downgrades to another
-mechanism if that mechanism is unavailable.
+In `auto` mode, the CLI considers `SCRAM-SHA-256-PLUS`, then `SCRAM-SHA-256`,
+then `PLAIN`.
+PLUS is selected only when the server advertises it and the connected client
+reports it locally usable, including a supported TLS 1.2 channel binding.
+An advertised but locally unusable PLUS mechanism is skipped in auto mode so
+that bare SCRAM or PLAIN can be used when advertised.
+An explicit `plain`, `scram-sha-256`, or `scram-sha-256-plus` selection fails if
+that mechanism is not advertised; explicit PLUS also fails when it is not
+locally usable and never downgrades to another mechanism.
+These selection failures occur before credentials are loaded, so they do not
+prompt for a password or emit authentication bytes.
 Use `msieve capabilities` to inspect the server's advertised `SASL mechanisms`
 before choosing an explicit mechanism; this command does not authenticate.
 

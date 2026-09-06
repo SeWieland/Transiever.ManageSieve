@@ -30,13 +30,14 @@ For a human-oriented overview and tool picker, see the [Transiever ManageSieve g
 * `ManageSieveCommandResult` exposes server messages, response codes, and warnings.
 * `ManageSievePlainAuthenticator` provides SASL PLAIN and is rejected on an unsecured connection.
 * `ManageSieveScramSha256Authenticator` provides the protected `SCRAM-SHA-256` password exchange.
+* `ManageSieveScramSha256PlusAuthenticator` provides protected, channel-bound `SCRAM-SHA-256-PLUS`.
 * Typed exceptions distinguish connection, authentication, protocol, and command failures.
 
 See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md) for the SASL lifecycle, security, memory ownership, diagnostics, and failure contract.
 
 See the [architecture guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/architecture.md) for protocol constraints and the [testing guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/testing.md) for test policy.
 
-### SCRAM-SHA-256
+### SCRAM-SHA-256 and SCRAM-SHA-256-PLUS
 
 Construct `ManageSieveScramSha256Authenticator` with a printable-ASCII user name, password, and optional authorization identity:
 
@@ -53,6 +54,10 @@ User names, passwords, and authorization identities are limited to printable ASC
 The client uses an 18-byte cryptographically random nonce encoded with standard Base64 for production exchanges.
 The deterministic nonce seam is internal test behavior and is not part of the public API.
 The exchange contract, bounds, proof validation, diagnostics, and cleanup ownership are defined in the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md).
+
+`ManageSieveScramSha256PlusAuthenticator` has the same identity and password contract, but uses the `SCRAM-SHA-256-PLUS` mechanism with the `tls-server-end-point` channel binding.
+The public constructor does not accept a binding; after TLS and capability validation, the client derives the binding from the verified peer certificate immediately before the initial response while holding the command lock.
+PLUS is available only for TLS 1.2 connections with a supported certificate signature algorithm; TLS 1.3 is rejected because the public .NET API does not expose the RFC 9266 `tls-exporter` primitive.
 
 ## Script operations
 

@@ -12,7 +12,9 @@ SASL mechanisms define how a client proves its identity to the server.
 `SCRAM-SHA-256` proves knowledge of the password through a salted challenge-response exchange instead of sending the password itself.
 It also allows a server to store salted verification material that is not by itself sufficient to impersonate the client, reducing the impact of a credential-database disclosure.
 It is specified by [RFC 5802](https://www.rfc-editor.org/rfc/rfc5802) and the SHA-256 registration in [RFC 7677](https://www.rfc-editor.org/rfc/rfc7677).
-This implementation still requires protected transport for SCRAM and supports the non-PLUS mechanism only; it does not provide channel binding.
+`SCRAM-SHA-256-PLUS` adds channel binding so the proof is tied to the TLS connection and its peer certificate.
+This implementation uses the `tls-server-end-point` binding from [RFC 5929](https://www.rfc-editor.org/rfc/rfc5929), while [RFC 9266](https://www.rfc-editor.org/rfc/rfc9266) defines the `tls-exporter` binding for newer TLS versions.
+Both SCRAM mechanisms require protected transport; PLUS additionally requires a supported TLS 1.2 endpoint binding.
 
 ## Before authentication
 
@@ -23,6 +25,8 @@ An authenticator may opt in to an unprotected connection only by explicitly sett
 
 The selected mechanism must be in the server's advertised capabilities before `GetInitialResponseAsync` is invoked or `AUTHENTICATE` is written.
 After `STARTTLS`, the capabilities read over the protected transport are authoritative; a mechanism advertised only before TLS is not sufficient.
+`CanUseScramSha256Plus` is false before TLS, when PLUS is not advertised, for TLS 1.3, or when the endpoint binding is unavailable or unsupported.
+During `AuthenticateAsync`, the client rechecks the binding under the command lock, fetches it immediately before `GetInitialResponseAsync`, and clears the attempt-owned bytes after the exchange; it does not cache a binding beyond the attempt.
 Failed preconditions produce no authenticator callback and no authentication wire output.
 
 ## SCRAM-SHA-256
@@ -52,6 +56,24 @@ Optional final extensions are accepted only when they use unassigned attribute n
 
 Complete SCRAM messages are limited to 1 to 16,384 UTF-8 bytes.
 Base64 is strict and canonical, with no whitespace, invalid alphabet, misplaced padding, or alternate encoding.
+
+## SCRAM-SHA-256-PLUS
+
+`ManageSieveScramSha256PlusAuthenticator(userName, password, authorizationIdentity?)` implements exactly `SCRAM-SHA-256-PLUS`.
+Its public API has no binding or context parameter: the client obtains the verified peer certificate's endpoint binding and supplies it to the authenticator for one locked authentication attempt.
+The binding name is `tls-server-end-point`, and the GS2 header is `p=tls-server-end-point,,` (or includes the escaped authorization identity); the `c=` client-final field is the Base64 encoding of that GS2 header followed by the raw endpoint-binding bytes.
+The channel binding is the exact DER certificate hash selected by these supported certificate signature algorithm OIDs:
+
+- SHA-256: MD5 (`1.2.840.113549.2.5`), RSA with MD5 (`1.2.840.113549.1.1.4`), SHA-1 (`1.3.14.3.2.26`), RSA with SHA-1 (`1.2.840.113549.1.1.5`), DSA with SHA-1 (`1.2.840.10040.4.3`), ECDSA with SHA-1 (`1.2.840.10045.4.1`), SHA-256 (`2.16.840.1.101.3.4.2.1`), RSA PKCS#1 v1.5 with SHA-256 (`1.2.840.113549.1.1.11`), and ECDSA with SHA-256 (`1.2.840.10045.4.3.2`).
+- SHA-384: SHA-384 (`2.16.840.1.101.3.4.2.2`), RSA PKCS#1 v1.5 with SHA-384 (`1.2.840.113549.1.1.12`), and ECDSA with SHA-384 (`1.2.840.10045.4.3.3`).
+- SHA-512: SHA-512 (`2.16.840.1.101.3.4.2.3`), RSA PKCS#1 v1.5 with SHA-512 (`1.2.840.113549.1.1.13`), and ECDSA with SHA-512 (`1.2.840.10045.4.3.4`).
+
+Missing certificates and all other signature algorithm OIDs fail closed, including RSA-PSS and DSA with SHA-2.
+
+Only TLS 1.2 is supported for this binding.
+TLS 1.3 fails closed with the fixed `SCRAM-SHA-256-PLUS requires a supported TLS 1.2 channel binding.` message because the public .NET API does not expose the RFC 9266 `tls-exporter` primitive.
+The implementation does not substitute `tls-unique`, `TransportContext`, fallback authentication, or native interop.
+An unavailable binding is a PLUS failure, not a reason to emit an unbound SCRAM exchange.
 
 ## Exchange lifecycle
 
