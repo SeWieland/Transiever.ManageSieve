@@ -53,6 +53,7 @@ public sealed class CommandLineOptionsTests
     [InlineData("auto", ManageSieveSaslMechanism.Auto)]
     [InlineData("plain", ManageSieveSaslMechanism.Plain)]
     [InlineData("scram-sha-256", ManageSieveSaslMechanism.ScramSha256)]
+    [InlineData("scram-sha-256-plus", ManageSieveSaslMechanism.ScramSha256Plus)]
     public void ParseReadsSaslMechanism(string value, ManageSieveSaslMechanism expected)
     {
         CommandLineOptions options = CommandLineOptions.Parse(

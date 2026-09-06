@@ -8,6 +8,9 @@ internal sealed class ScriptedManageSieveTransport :
 {
     private readonly ScriptedStream stream;
     private readonly Exception? disposeException;
+    private readonly byte[]? tlsServerEndPointBinding;
+    private readonly Exception? tlsServerEndPointBindingException;
+    private readonly List<string>? tlsServerEndPointBindingTrace;
 
     public ScriptedManageSieveTransport(
         ReadOnlyMemory<byte> input,
@@ -15,7 +18,10 @@ internal sealed class ScriptedManageSieveTransport :
         bool blockAfterInput = false,
         bool failAfterPartialWrite = false,
         int? failAfterPartialWriteNumber = null,
-        Exception? disposeException = null)
+        Exception? disposeException = null,
+        ReadOnlyMemory<byte>? tlsServerEndPointBinding = null,
+        Exception? tlsServerEndPointBindingException = null,
+        List<string>? tlsServerEndPointBindingTrace = null)
     {
         stream = new ScriptedStream(
             input,
@@ -23,6 +29,9 @@ internal sealed class ScriptedManageSieveTransport :
             failAfterPartialWriteNumber ?? (failAfterPartialWrite ? 1 : null));
         IsSecure = secure;
         this.disposeException = disposeException;
+        this.tlsServerEndPointBinding = tlsServerEndPointBinding?.ToArray();
+        this.tlsServerEndPointBindingException = tlsServerEndPointBindingException;
+        this.tlsServerEndPointBindingTrace = tlsServerEndPointBindingTrace;
     }
 
     public Stream Stream => stream;
@@ -31,10 +40,25 @@ internal sealed class ScriptedManageSieveTransport :
 
     public bool IsDisposed { get; private set; }
 
+    public List<byte[]> IssuedTlsServerEndPointBindings { get; } = [];
+
     public bool TryGetTlsServerEndPointBinding(out byte[] binding)
     {
-        binding = [];
-        return false;
+        tlsServerEndPointBindingTrace?.Add("GetBinding");
+        if (tlsServerEndPointBindingException is not null)
+        {
+            throw tlsServerEndPointBindingException;
+        }
+
+        if (!IsSecure || tlsServerEndPointBinding is null)
+        {
+            binding = [];
+            return false;
+        }
+
+        binding = tlsServerEndPointBinding.ToArray();
+        IssuedTlsServerEndPointBindings.Add(binding);
+        return true;
     }
 
     public ReadOnlyMemory<byte> Written => stream.Written;
@@ -376,7 +400,10 @@ internal sealed class SaslConformanceHarness : IAsyncDisposable
         bool failAfterPartialWrite = false,
         int? failAfterPartialWriteNumber = null,
         TimeSpan? operationTimeout = null,
-        Exception? disposeException = null)
+        Exception? disposeException = null,
+        ReadOnlyMemory<byte>? tlsServerEndPointBinding = null,
+        Exception? tlsServerEndPointBindingException = null,
+        List<string>? tlsServerEndPointBindingTrace = null)
     {
         TimeSpan timeout = operationTimeout ?? TimeSpan.FromSeconds(30);
         var transport = new ScriptedManageSieveTransport(
@@ -385,7 +412,10 @@ internal sealed class SaslConformanceHarness : IAsyncDisposable
             blockAfterInput,
             failAfterPartialWrite,
             failAfterPartialWriteNumber,
-            disposeException);
+            disposeException,
+            tlsServerEndPointBinding,
+            tlsServerEndPointBindingException,
+            tlsServerEndPointBindingTrace);
         var client = new ManageSieveClient(
             new ManageSieveClientOptions
             {

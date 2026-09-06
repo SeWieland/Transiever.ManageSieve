@@ -83,6 +83,149 @@ public sealed class ManageSieveCliApplicationTests
     }
 
     [Fact]
+    public async Task AutoSelectsScramSha256PlusWhenAdvertisedAndLocallyUsable()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(
+                    ["PLAIN", "SCRAM-SHA-256", "SCRAM-SHA-256-PLUS"])
+            },
+            CanUseScramSha256Plus = true
+        };
+        TestApplication app = CreateApplication(client);
+
+        await app.Application.RunAsync(
+            CommandLineOptions.Parse(["list"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<ManageSieveScramSha256PlusAuthenticator>(client.Authenticator);
+    }
+
+    [Fact]
+    public async Task ExplicitScramSha256PlusSelectsPlusWhenEligible()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["SCRAM-SHA-256-PLUS"])
+            },
+            CanUseScramSha256Plus = true
+        };
+        TestApplication app = CreateApplication(client);
+
+        await app.Application.RunAsync(
+            CommandLineOptions.Parse(
+                ["list", "--sieve-sasl-mechanism", "scram-sha-256-plus"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<ManageSieveScramSha256PlusAuthenticator>(client.Authenticator);
+    }
+
+    [Theory]
+    [InlineData("SCRAM-SHA-256", typeof(ManageSieveScramSha256Authenticator))]
+    [InlineData("PLAIN", typeof(ManageSievePlainAuthenticator))]
+    public async Task AutoSkipsAdvertisedScramSha256PlusWhenLocallyUnusable(
+        string fallback,
+        Type expectedAuthenticator)
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(
+                    ["SCRAM-SHA-256-PLUS", fallback])
+            }
+        };
+        TestApplication app = CreateApplication(client);
+
+        await app.Application.RunAsync(
+            CommandLineOptions.Parse(["list"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType(expectedAuthenticator, client.Authenticator);
+    }
+
+    [Fact]
+    public async Task AutoFailsBeforeCredentialsWhenOnlyUnusablePlusIsAdvertised()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["SCRAM-SHA-256-PLUS"])
+            }
+        };
+        var provider = new TrackingSieveServerConfigurationProvider();
+        TestApplication app = CreateApplication(client, provider);
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => app.Application.RunAsync(
+                CommandLineOptions.Parse(["list"]),
+                TestContext.Current.CancellationToken));
+
+        Assert.False(provider.CredentialsRequested);
+        Assert.Null(client.Authenticator);
+    }
+
+    [Theory]
+    [InlineData(false, true)]
+    [InlineData(true, false)]
+    public async Task ExplicitPlusFailsBeforeCredentialsWhenIneligible(
+        bool advertised,
+        bool locallyUsable)
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = advertised
+                    ? new HashSet<string>(["SCRAM-SHA-256-PLUS"])
+                    : new HashSet<string>()
+            },
+            CanUseScramSha256Plus = locallyUsable
+        };
+        var provider = new TrackingSieveServerConfigurationProvider();
+        TestApplication app = CreateApplication(client, provider);
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => app.Application.RunAsync(
+                CommandLineOptions.Parse(
+                    ["list", "--sieve-sasl-mechanism", "scram-sha-256-plus"]),
+                TestContext.Current.CancellationToken));
+
+        Assert.False(provider.CredentialsRequested);
+        Assert.Null(client.Authenticator);
+    }
+
+    [Fact]
+    public async Task PlusRejectionDoesNotFallbackAfterAuthenticationStarts()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(
+                    ["SCRAM-SHA-256-PLUS", "SCRAM-SHA-256", "PLAIN"])
+            },
+            CanUseScramSha256Plus = true,
+            AuthenticationException = new ManageSieveAuthenticationException(
+                "ManageSieve authentication failed.")
+        };
+        TestApplication app = CreateApplication(client);
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => app.Application.RunAsync(
+                CommandLineOptions.Parse(["list"]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(1, client.AuthenticationAttempts);
+        Assert.IsType<ManageSieveScramSha256PlusAuthenticator>(client.Authenticator);
+    }
+
+    [Fact]
     public async Task AutoFailsBeforeReadingCredentialsWhenNoMechanismIsAdvertised()
     {
         var client = new FakeManageSieveClient
@@ -415,6 +558,12 @@ public sealed class ManageSieveCliApplicationTests
 
         public bool Authenticated { get; private set; }
 
+        public bool CanUseScramSha256Plus { get; set; }
+
+        public int AuthenticationAttempts { get; private set; }
+
+        public Exception? AuthenticationException { get; set; }
+
         public IManageSieveAuthenticator? Authenticator { get; private set; }
 
         public bool SetActiveCalled { get; private set; }
@@ -476,7 +625,13 @@ public sealed class ManageSieveCliApplicationTests
             IManageSieveAuthenticator authenticator,
             CancellationToken cancellationToken = default)
         {
+            AuthenticationAttempts++;
             Authenticator = authenticator;
+            if (AuthenticationException is not null)
+            {
+                return ValueTask.FromException(AuthenticationException);
+            }
+
             Authenticated = true;
             return ValueTask.CompletedTask;
         }
