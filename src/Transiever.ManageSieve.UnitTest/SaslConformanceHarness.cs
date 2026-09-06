@@ -31,6 +31,12 @@ internal sealed class ScriptedManageSieveTransport :
 
     public bool IsDisposed { get; private set; }
 
+    public bool TryGetTlsServerEndPointBinding(out byte[] binding)
+    {
+        binding = [];
+        return false;
+    }
+
     public ReadOnlyMemory<byte> Written => stream.Written;
 
     public IReadOnlyList<ReadOnlyMemory<byte>> OriginalWrites => stream.OriginalWrites;

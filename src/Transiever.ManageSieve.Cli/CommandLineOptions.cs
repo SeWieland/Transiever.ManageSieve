@@ -7,7 +7,8 @@ public enum ManageSieveSaslMechanism
 {
     Auto,
     Plain,
-    ScramSha256
+    ScramSha256,
+    ScramSha256Plus
 }
 
 public sealed class CommandLineOptions
@@ -249,6 +250,7 @@ public sealed class CommandLineOptions
             "auto" => ManageSieveSaslMechanism.Auto,
             "plain" => ManageSieveSaslMechanism.Plain,
             "scram-sha-256" => ManageSieveSaslMechanism.ScramSha256,
+            "scram-sha-256-plus" => ManageSieveSaslMechanism.ScramSha256Plus,
             _ => throw new ArgumentException(
                 $"Unknown Sieve SASL mechanism: {value}")
         };

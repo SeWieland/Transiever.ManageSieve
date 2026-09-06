@@ -30,14 +30,27 @@ internal sealed class ScramSha256Exchange
 
     internal ScramSha256Exchange(
         string userName, string password, string? authorizationIdentity, string nonce)
+        : this(userName, password, authorizationIdentity, nonce, null, ReadOnlyMemory<byte>.Empty)
+    {
+    }
+
+    internal ScramSha256Exchange(
+        string userName,
+        string password,
+        string? authorizationIdentity,
+        string nonce,
+        string? channelBindingName,
+        ReadOnlyMemory<byte> channelBinding)
     {
         string user = EscapeIdentity(userName);
-        string gs2Header = string.IsNullOrEmpty(authorizationIdentity)
-            ? "n,,"
-            : $"n,a={EscapeIdentity(authorizationIdentity)},";
+        string gs2Header = channelBindingName is null
+            ? string.IsNullOrEmpty(authorizationIdentity)
+                ? "n,,"
+                : $"n,a={EscapeIdentity(authorizationIdentity)},"
+            : $"p={channelBindingName},{(string.IsNullOrEmpty(authorizationIdentity) ? string.Empty : $"a={EscapeIdentity(authorizationIdentity)}")},";
         _clientFirstBare = $"n={user},r={nonce}";
         _clientNonce = nonce;
-        _encodedGs2Header = Convert.ToBase64String(Encoding.UTF8.GetBytes(gs2Header));
+        _encodedGs2Header = EncodeGs2Header(gs2Header, channelBinding);
         _initialMessage = $"{gs2Header}{_clientFirstBare}";
         _password = password;
     }
@@ -388,6 +401,34 @@ internal sealed class ScramSha256Exchange
         if (toClear is not null)
         {
             CryptographicOperations.ZeroMemory(toClear);
+        }
+    }
+
+    private static string EncodeGs2Header(string gs2Header, ReadOnlyMemory<byte> channelBinding)
+    {
+        byte[] header = Encoding.ASCII.GetBytes(gs2Header);
+        try
+        {
+            if (channelBinding.IsEmpty)
+            {
+                return Convert.ToBase64String(header);
+            }
+
+            byte[] input = new byte[header.Length + channelBinding.Length];
+            try
+            {
+                header.CopyTo(input, 0);
+                channelBinding.Span.CopyTo(input.AsSpan(header.Length));
+                return Convert.ToBase64String(input);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(input);
+            }
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(header);
         }
     }
 
