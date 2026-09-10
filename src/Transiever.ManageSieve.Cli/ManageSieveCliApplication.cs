@@ -216,11 +216,15 @@ public sealed class ManageSieveCliApplication
                 await client.RefreshCapabilitiesAsync(cancellationToken);
             string selectedMechanism = SelectSaslMechanism(
                 requestedMechanism,
-                capabilities.SaslMechanisms);
+                capabilities.SaslMechanisms,
+                client);
 
             SieveServerConfiguration configuration = _configurationProvider.GetAuthenticatedConfiguration(options);
             IManageSieveAuthenticator authenticator = selectedMechanism switch
             {
+                "SCRAM-SHA-256-PLUS" => new ManageSieveScramSha256PlusAuthenticator(
+                    configuration.UserName,
+                    configuration.Password),
                 "SCRAM-SHA-256" => new ManageSieveScramSha256Authenticator(
                     configuration.UserName,
                     configuration.Password),
@@ -241,10 +245,17 @@ public sealed class ManageSieveCliApplication
 
     private static string SelectSaslMechanism(
         ManageSieveSaslMechanism requested,
-        IReadOnlySet<string> advertised)
+        IReadOnlySet<string> advertised,
+        IManageSieveClient client)
     {
         if (requested == ManageSieveSaslMechanism.Auto)
         {
+            if (advertised.Contains("SCRAM-SHA-256-PLUS") &&
+                client.CanUseScramSha256Plus)
+            {
+                return "SCRAM-SHA-256-PLUS";
+            }
+
             if (advertised.Contains("SCRAM-SHA-256"))
             {
                 return "SCRAM-SHA-256";
@@ -256,13 +267,14 @@ public sealed class ManageSieveCliApplication
             }
 
             throw new ManageSieveAuthenticationException(
-                "The server did not advertise SCRAM-SHA-256 or PLAIN.");
+                "The server did not advertise a locally usable SCRAM-SHA-256-PLUS, SCRAM-SHA-256, or PLAIN mechanism.");
         }
 
         string mechanism = requested switch
         {
             ManageSieveSaslMechanism.Plain => "PLAIN",
             ManageSieveSaslMechanism.ScramSha256 => "SCRAM-SHA-256",
+            ManageSieveSaslMechanism.ScramSha256Plus => "SCRAM-SHA-256-PLUS",
             _ => throw new ManageSieveAuthenticationException(
                 $"Unknown Sieve SASL mechanism: {requested}.")
         };
@@ -270,6 +282,13 @@ public sealed class ManageSieveCliApplication
         {
             throw new ManageSieveAuthenticationException(
                 $"The server did not advertise the selected SASL mechanism: {mechanism}.");
+        }
+
+        if (requested == ManageSieveSaslMechanism.ScramSha256Plus &&
+            !client.CanUseScramSha256Plus)
+        {
+            throw new ManageSieveAuthenticationException(
+                "SCRAM-SHA-256-PLUS is not locally usable on this connection.");
         }
 
         return mechanism;

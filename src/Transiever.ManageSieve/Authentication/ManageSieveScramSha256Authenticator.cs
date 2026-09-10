@@ -51,7 +51,7 @@ public sealed class ManageSieveScramSha256Authenticator : IManageSieveAuthentica
     private static string CreateNonce() =>
         Convert.ToBase64String(RandomNumberGenerator.GetBytes(18));
 
-    private static void ValidateAsciiInput(string value, string parameterName, bool allowEmpty)
+    internal static void ValidateAsciiInput(string value, string parameterName, bool allowEmpty)
     {
         ArgumentNullException.ThrowIfNull(value, parameterName);
         if ((!allowEmpty && value.Length == 0) || value.Length > 1024 ||
@@ -63,7 +63,7 @@ public sealed class ManageSieveScramSha256Authenticator : IManageSieveAuthentica
         }
     }
 
-    private static void ValidateNonce(string nonce)
+    internal static void ValidateNonce(string nonce)
     {
         ArgumentNullException.ThrowIfNull(nonce);
         if (nonce.Length is 0 or > 256 ||

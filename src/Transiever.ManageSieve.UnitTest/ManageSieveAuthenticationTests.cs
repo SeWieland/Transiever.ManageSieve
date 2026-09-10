@@ -6,6 +6,355 @@ namespace Transiever.ManageSieve.UnitTest;
 
 public sealed class ManageSieveAuthenticationTests
 {
+    private static readonly byte[] ScramSha256PlusBinding = Convert.FromHexString(
+        "d493933cfb11a10052dbb29ab90ae44ac3294ae370d06ff946c76ebaf4bfedae");
+    private const string ScramSha256PlusNonce = "rOprNGfwEbeRWgbNEkqO";
+    private const string ScramSha256PlusServerFirstBase64 =
+        "cj1yT3ByTkdmd0ViZVJXZ2JORWtxTyVodllEcFdVYTJSYVRDQWZ1eEZJbGopaE5sRiRrMCxzPVcyMlphSjBTTlk3c29Fc1VFamI2Z1E9PSxpPTQwOTY=";
+    private const string ScramSha256PlusServerFinal =
+        "v=cRUS52qGDweDsewIm6aCNUTa8TgCzWX202cCaOE50JQ=";
+    private const string ScramSha256PlusInitialFrame =
+        "AUTHENTICATE \"SCRAM-SHA-256-PLUS\" \"cD10bHMtc2VydmVyLWVuZC1wb2ludCwsbj11c2VyLHI9ck9wck5HZndFYmVSV2diTkVrcU8=\"\r\n";
+    private const string ScramSha256PlusResponseFrame =
+        "\"Yz1jRDEwYkhNdGMyVnlkbVZ5TFdWdVpDMXdiMmx1ZEN3czFKT1RQUHNSb1FCUzI3S2F1UXJrU3NNcFN1TncwRy81UnNkdXV2Uy83YTQ9LHI9ck9wck5HZndFYmVSV2diTkVrcU8laHZZRHBXVWEyUmFUQ0FmdXhGSWxqKWhObEYkazAscD1YZDVBWXJ2bnRtUzNlTTNCdWFTMW5VcUdjQkNFWFg2QUdDQkl2NnNBOGdjPQ==\"\r\n";
+    private const string ScramSha256PlusAlteredBindingResponseFrame =
+        "\"Yz1jRDEwYkhNdGMyVnlkbVZ5TFdWdVpDMXdiMmx1ZEN3czFaT1RQUHNSb1FCUzI3S2F1UXJrU3NNcFN1TncwRy81UnNkdXV2Uy83YTQ9LHI9ck9wck5HZndFYmVSV2diTkVrcU8laHZZRHBXVWEyUmFUQ0FmdXhGSWxqKWhObEYkazAscD1zQUNiNFFleHUweXU3RnJXNnZyZ1M2Wm85dkhyTm5XZ2w4akJXR25IUGM0PQ==\"\r\n";
+
+    [Fact]
+    public async Task ScramSha256PlusLifecycle_fetches_binding_immediately_before_initial_response()
+    {
+        List<string> trace = [];
+        await using SaslConformanceHarness harness =
+            await SaslConformanceHarness.ConnectAsync(
+                "\"SASL\" \"TEST SCRAM-SHA-256-PLUS\"\r\nOK\r\nOK\r\n"u8.ToArray(),
+                tlsServerEndPointBinding: ScramSha256PlusBinding,
+                tlsServerEndPointBindingTrace: trace);
+        using var cancellation = new CancellationTokenSource();
+        var lockHolder = new ScriptedAuthenticator { BlockInitialResponse = true };
+        Task heldAuthentication = harness.Client.AuthenticateAsync(
+            lockHolder,
+            cancellation.Token).AsTask();
+        await lockHolder.WaitForInitialAsync()
+            .WaitAsync(TestContext.Current.CancellationToken);
+        var authenticator = new RecordingChannelBindingLifecycleAuthenticator(trace);
+
+        Task plusAuthentication = harness.Client.AuthenticateAsync(
+            authenticator,
+            TestContext.Current.CancellationToken).AsTask();
+
+        try
+        {
+            Assert.Empty(trace);
+        }
+        finally
+        {
+            cancellation.Cancel();
+            await Assert.ThrowsAnyAsync<OperationCanceledException>(
+                () => heldAuthentication);
+        }
+
+        await plusAuthentication;
+
+        Assert.Equal(
+            ["GetBinding", "SetBinding", "Initial", "Complete"],
+            trace);
+        Assert.Equal(ScramSha256PlusBinding, authenticator.Binding);
+        AssertZeroed(harness.Transport.IssuedTlsServerEndPointBindings.Select(
+            binding => (ReadOnlyMemory<byte>)binding));
+    }
+
+    [Fact]
+    public async Task ScramSha256PlusLifecycle_reports_eligible_and_clears_probe_binding()
+    {
+        await using SaslConformanceHarness harness =
+            await SaslConformanceHarness.ConnectAsync(
+                "\"SASL\" \"SCRAM-SHA-256-PLUS\"\r\nOK\r\n"u8.ToArray(),
+                tlsServerEndPointBinding: ScramSha256PlusBinding);
+
+        Assert.True(harness.Client.CanUseScramSha256Plus);
+        AssertZeroed(harness.Transport.IssuedTlsServerEndPointBindings.Select(
+            binding => (ReadOnlyMemory<byte>)binding));
+    }
+
+    [Fact]
+    public async Task ScramSha256PlusLifecycle_is_ineligible_without_advertisement_or_binding()
+    {
+        await using SaslConformanceHarness unadvertised =
+            await SaslConformanceHarness.ConnectAsync(
+                "\"SASL\" \"SCRAM-SHA-256\"\r\nOK\r\n"u8.ToArray(),
+                tlsServerEndPointBinding: ScramSha256PlusBinding);
+        await using SaslConformanceHarness unavailable =
+            await SaslConformanceHarness.ConnectAsync(
+                "\"SASL\" \"SCRAM-SHA-256-PLUS\"\r\nOK\r\n"u8.ToArray());
+        await using SaslConformanceHarness unsecured =
+            await SaslConformanceHarness.ConnectAsync(
+                "\"SASL\" \"SCRAM-SHA-256-PLUS\"\r\nOK\r\n"u8.ToArray(),
+                ManageSieveSecurityMode.PlainText,
+                secure: false,
+                tlsServerEndPointBinding: ScramSha256PlusBinding);
+
+        Assert.False(unadvertised.Client.CanUseScramSha256Plus);
+        Assert.Empty(unadvertised.Transport.IssuedTlsServerEndPointBindings);
+        Assert.False(unavailable.Client.CanUseScramSha256Plus);
+        Assert.False(unsecured.Client.CanUseScramSha256Plus);
+        Assert.Empty(unsecured.Transport.IssuedTlsServerEndPointBindings);
+    }
+
+    [Fact]
+    public async Task ScramSha256PlusLifecycle_is_ineligible_when_tls_binding_is_unsupported()
+    {
+        await using SaslConformanceHarness harness =
+            await SaslConformanceHarness.ConnectAsync(
+                "\"SASL\" \"SCRAM-SHA-256-PLUS\"\r\nOK\r\n"u8.ToArray(),
+                tlsServerEndPointBindingException:
+                    new ManageSieveAuthenticationException(
+                        "SCRAM-SHA-256-PLUS requires a supported TLS 1.2 channel binding."));
+
+        Assert.False(harness.Client.CanUseScramSha256Plus);
+    }
+
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task ScramSha256PlusLifecycle_requires_valid_server_proof(bool finalChallenge)
+    {
+        string outcome = finalChallenge
+            ? $"\"{Base64(ScramSha256PlusServerFinal)}\"\r\nOK\r\n"
+            : $"OK (SASL \"{Base64(ScramSha256PlusServerFinal)}\")\r\n";
+        byte[] responses = Encoding.ASCII.GetBytes(
+            "\"SASL\" \"SCRAM-SHA-256-PLUS\"\r\nOK\r\n" +
+            $"\"{ScramSha256PlusServerFirstBase64}\"\r\n" +
+            outcome);
+        await using SaslConformanceHarness harness =
+            await SaslConformanceHarness.ConnectAsync(
+                responses,
+                tlsServerEndPointBinding: ScramSha256PlusBinding);
+        var authenticator = CreateScramSha256PlusAuthenticator();
+
+        await harness.Client.AuthenticateAsync(
+            authenticator,
+            TestContext.Current.CancellationToken);
+
+        string expected = ScramSha256PlusInitialFrame +
+            ScramSha256PlusResponseFrame +
+            (finalChallenge ? "\"\"\r\n" : string.Empty);
+        AssertTranscriptEqual(
+            Encoding.ASCII.GetBytes(expected),
+            harness.Transport.Written.Span);
+        AssertZeroed(harness.Transport.IssuedTlsServerEndPointBindings.Select(
+            binding => (ReadOnlyMemory<byte>)binding));
+        Assert.Equal(ManageSieveSessionState.Authenticated, harness.Client.State);
+        Assert.Throws<ManageSieveAuthenticationException>(
+            () => ((IManageSieveChannelBindingAuthenticator)authenticator)
+                .SetChannelBinding(ScramSha256PlusBinding));
+    }
+
+    [Fact]
+    public async Task ScramSha256PlusLifecycle_rejects_one_bit_altered_binding()
+    {
+        byte[] alteredBinding = [.. ScramSha256PlusBinding];
+        alteredBinding[0] ^= 0x01;
+        byte[] responses = Encoding.ASCII.GetBytes(
+            "\"SASL\" \"SCRAM-SHA-256-PLUS SCRAM-SHA-256\"\r\nOK\r\n" +
+            $"\"{ScramSha256PlusServerFirstBase64}\"\r\n" +
+            $"OK (SASL \"{Base64(ScramSha256PlusServerFinal)}\")\r\n");
+        await using SaslConformanceHarness harness =
+            await SaslConformanceHarness.ConnectAsync(
+                responses,
+                tlsServerEndPointBinding: alteredBinding);
+
+        ManageSieveAuthenticationException exception =
+            await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+                () => harness.Client.AuthenticateAsync(
+                    CreateScramSha256PlusAuthenticator(),
+                    TestContext.Current.CancellationToken).AsTask());
+
+        Assert.Equal("ManageSieve authenticator failed.", exception.Message);
+        Assert.Null(exception.InnerException);
+        AssertTranscriptEqual(
+            Encoding.ASCII.GetBytes(
+                ScramSha256PlusInitialFrame +
+                ScramSha256PlusAlteredBindingResponseFrame),
+            harness.Transport.Written.Span);
+        Assert.DoesNotContain(
+            "AUTHENTICATE \"SCRAM-SHA-256\"",
+            Encoding.ASCII.GetString(harness.Transport.Written.Span),
+            StringComparison.Ordinal);
+        AssertZeroed(harness.Transport.IssuedTlsServerEndPointBindings.Select(
+            binding => (ReadOnlyMemory<byte>)binding));
+        Assert.Equal(ManageSieveSessionState.Disconnected, harness.Client.State);
+    }
+
+    [Theory]
+    [InlineData("completion", "missing")]
+    [InlineData("completion", "malformed")]
+    [InlineData("completion", "mismatch")]
+    [InlineData("challenge", "missing")]
+    [InlineData("challenge", "malformed")]
+    [InlineData("challenge", "mismatch")]
+    public async Task ScramSha256PlusLifecycle_rejects_invalid_server_proof(
+        string form,
+        string failure)
+    {
+        string serverFinal = failure switch
+        {
+            "missing" => string.Empty,
+            "malformed" => "v=not-base64",
+            _ => "v=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+        };
+        string outcome = form == "challenge"
+            ? $"\"{Base64(serverFinal)}\"\r\n"
+            : failure == "missing"
+                ? "OK\r\n"
+                : $"OK (SASL \"{Base64(serverFinal)}\")\r\n";
+        byte[] responses = Encoding.ASCII.GetBytes(
+            "\"SASL\" \"SCRAM-SHA-256-PLUS\"\r\nOK\r\n" +
+            $"\"{ScramSha256PlusServerFirstBase64}\"\r\n" +
+            outcome);
+        await using SaslConformanceHarness harness =
+            await SaslConformanceHarness.ConnectAsync(
+                responses,
+                tlsServerEndPointBinding: ScramSha256PlusBinding);
+        var authenticator = CreateScramSha256PlusAuthenticator();
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => harness.Client.AuthenticateAsync(
+                authenticator,
+                TestContext.Current.CancellationToken).AsTask());
+
+        Assert.StartsWith(
+            ScramSha256PlusInitialFrame + ScramSha256PlusResponseFrame,
+            Encoding.ASCII.GetString(harness.Transport.Written.Span),
+            StringComparison.Ordinal);
+        AssertZeroed(harness.Transport.IssuedTlsServerEndPointBindings.Select(
+            binding => (ReadOnlyMemory<byte>)binding));
+        Assert.Equal(ManageSieveSessionState.Disconnected, harness.Client.State);
+        Assert.Throws<ManageSieveAuthenticationException>(
+            () => ((IManageSieveChannelBindingAuthenticator)authenticator)
+                .SetChannelBinding(ScramSha256PlusBinding));
+    }
+
+    [Fact]
+    public async Task ScramSha256PlusLifecycle_clears_binding_on_cancellation()
+    {
+        await using SaslConformanceHarness harness =
+            await SaslConformanceHarness.ConnectAsync(
+                "\"SASL\" \"SCRAM-SHA-256-PLUS\"\r\nOK\r\n"u8.ToArray(),
+                blockAfterInput: true,
+                tlsServerEndPointBinding: ScramSha256PlusBinding);
+        var authenticator = CreateScramSha256PlusAuthenticator();
+        using var cancellation = new CancellationTokenSource();
+
+        Task authentication = harness.Client.AuthenticateAsync(
+            authenticator,
+            cancellation.Token).AsTask();
+        await harness.Transport.WaitForWriteAsync()
+            .WaitAsync(TestContext.Current.CancellationToken);
+        cancellation.Cancel();
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => authentication);
+        AssertZeroed(harness.Transport.IssuedTlsServerEndPointBindings.Select(
+            binding => (ReadOnlyMemory<byte>)binding));
+        Assert.Throws<ManageSieveAuthenticationException>(
+            () => ((IManageSieveChannelBindingAuthenticator)authenticator)
+                .SetChannelBinding(ScramSha256PlusBinding));
+    }
+
+    [Fact]
+    public async Task ScramSha256PlusLifecycle_rejects_unavailable_binding_before_credentials_are_sent()
+    {
+        await using SaslConformanceHarness harness =
+            await SaslConformanceHarness.ConnectAsync(
+                "\"SASL\" \"SCRAM-SHA-256-PLUS\"\r\nOK\r\n"u8.ToArray());
+        var authenticator = CreateScramSha256PlusAuthenticator();
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => harness.Client.AuthenticateAsync(
+                authenticator,
+                TestContext.Current.CancellationToken).AsTask());
+        Assert.True(harness.Transport.Written.IsEmpty);
+        Assert.Throws<ManageSieveAuthenticationException>(
+            () => ((IManageSieveChannelBindingAuthenticator)authenticator)
+                .SetChannelBinding(ScramSha256PlusBinding));
+    }
+
+    [Fact]
+    public async Task ScramSha256PlusLifecycle_rejects_wrong_binding_name_without_fallback()
+    {
+        await using SaslConformanceHarness harness =
+            await SaslConformanceHarness.ConnectAsync(
+                "\"SASL\" \"SCRAM-SHA-256-PLUS\"\r\nOK\r\n"u8.ToArray(),
+                tlsServerEndPointBinding: ScramSha256PlusBinding);
+        var authenticator = new RecordingChannelBindingLifecycleAuthenticator
+        {
+            ChannelBindingName = "tls-unique"
+        };
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => harness.Client.AuthenticateAsync(
+                authenticator,
+                TestContext.Current.CancellationToken).AsTask());
+
+        Assert.Equal(["Abort"], authenticator.Calls);
+        Assert.True(harness.Transport.Written.IsEmpty);
+    }
+
+    [Fact]
+    public async Task ScramSha256PlusLifecycle_does_not_fallback_to_bare_scram()
+    {
+        await using SaslConformanceHarness harness =
+            await SaslConformanceHarness.ConnectAsync(
+                "\"SASL\" \"SCRAM-SHA-256\"\r\nOK\r\n"u8.ToArray(),
+                tlsServerEndPointBinding: ScramSha256PlusBinding);
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => harness.Client.AuthenticateAsync(
+                CreateScramSha256PlusAuthenticator(),
+                TestContext.Current.CancellationToken).AsTask());
+
+        Assert.True(harness.Transport.Written.IsEmpty);
+        Assert.Empty(harness.Transport.IssuedTlsServerEndPointBindings);
+    }
+
+    [Fact]
+    public async Task ScramSha256PlusLifecycle_rejects_unprotected_transport_before_wire()
+    {
+        await using SaslConformanceHarness harness =
+            await SaslConformanceHarness.ConnectAsync(
+                "\"SASL\" \"SCRAM-SHA-256-PLUS\"\r\nOK\r\n"u8.ToArray(),
+                ManageSieveSecurityMode.PlainText,
+                secure: false,
+                tlsServerEndPointBinding: ScramSha256PlusBinding);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => harness.Client.AuthenticateAsync(
+                CreateScramSha256PlusAuthenticator(),
+                TestContext.Current.CancellationToken).AsTask());
+
+        Assert.True(harness.Transport.Written.IsEmpty);
+        Assert.Empty(harness.Transport.IssuedTlsServerEndPointBindings);
+    }
+
+    [Fact]
+    public async Task ScramSha256PlusLifecycle_rejects_unsupported_tls_before_wire()
+    {
+        await using SaslConformanceHarness harness =
+            await SaslConformanceHarness.ConnectAsync(
+                "\"SASL\" \"SCRAM-SHA-256-PLUS\"\r\nOK\r\n"u8.ToArray(),
+                tlsServerEndPointBindingException:
+                    new ManageSieveAuthenticationException("unsupported binding"));
+        var authenticator = CreateScramSha256PlusAuthenticator();
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => harness.Client.AuthenticateAsync(
+                authenticator,
+                TestContext.Current.CancellationToken).AsTask());
+        Assert.True(harness.Transport.Written.IsEmpty);
+        Assert.Throws<ManageSieveAuthenticationException>(
+            () => ((IManageSieveChannelBindingAuthenticator)authenticator)
+                .SetChannelBinding(ScramSha256PlusBinding));
+    }
+
     [Fact]
     public async Task Authentication_defaults_are_compatible_with_legacy_authenticators()
     {
@@ -1012,6 +1361,56 @@ public sealed class ManageSieveAuthenticationTests
 
     private static string Base64(string value) =>
         Convert.ToBase64String(Encoding.UTF8.GetBytes(value));
+
+    private static ManageSieveScramSha256PlusAuthenticator
+        CreateScramSha256PlusAuthenticator() =>
+        new(
+            "user",
+            "pencil",
+            authorizationIdentity: null,
+            nonceFactory: () => ScramSha256PlusNonce);
+
+    private sealed class RecordingChannelBindingLifecycleAuthenticator(
+        List<string>? trace = null) :
+        IManageSieveAuthenticator,
+        IManageSieveChannelBindingAuthenticator
+    {
+        public string Mechanism => "SCRAM-SHA-256-PLUS";
+
+        public string ChannelBindingName { get; init; } = "tls-server-end-point";
+
+        public List<string> Calls { get; } = trace ?? [];
+
+        public byte[]? Binding { get; private set; }
+
+        public void SetChannelBinding(ReadOnlyMemory<byte> binding)
+        {
+            Calls.Add("SetBinding");
+            Binding = binding.ToArray();
+        }
+
+        public ValueTask<ReadOnlyMemory<byte>?> GetInitialResponseAsync(
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add("Initial");
+            return ValueTask.FromResult<ReadOnlyMemory<byte>?>(null);
+        }
+
+        public ValueTask<ReadOnlyMemory<byte>> RespondAsync(
+            ReadOnlyMemory<byte> challenge,
+            CancellationToken cancellationToken = default) =>
+            ValueTask.FromResult(ReadOnlyMemory<byte>.Empty);
+
+        public ValueTask CompleteAsync(
+            ReadOnlyMemory<byte>? serverData,
+            CancellationToken cancellationToken = default)
+        {
+            Calls.Add("Complete");
+            return ValueTask.CompletedTask;
+        }
+
+        public void Abort() => Calls.Add("Abort");
+    }
 
     private sealed class LegacyAuthenticator : IManageSieveAuthenticator
     {

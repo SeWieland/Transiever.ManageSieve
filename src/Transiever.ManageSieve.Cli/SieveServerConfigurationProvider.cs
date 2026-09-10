@@ -130,6 +130,7 @@ public sealed class EnvironmentSieveServerConfigurationProvider
             "auto" => ManageSieveSaslMechanism.Auto,
             "plain" => ManageSieveSaslMechanism.Plain,
             "scram-sha-256" => ManageSieveSaslMechanism.ScramSha256,
+            "scram-sha-256-plus" => ManageSieveSaslMechanism.ScramSha256Plus,
             _ => throw new InvalidOperationException(
                 $"Unknown Sieve SASL mechanism: {value}")
         };

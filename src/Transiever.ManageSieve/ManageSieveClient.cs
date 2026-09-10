@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using Transiever.ManageSieve.Authentication;
 
 namespace Transiever.ManageSieve;
@@ -55,6 +56,36 @@ public sealed class ManageSieveClient : IManageSieveClient
         ManageSieveSessionState.Disconnected;
 
     public ManageSieveCapabilities? Capabilities { get; private set; }
+
+    public bool CanUseScramSha256Plus
+    {
+        get
+        {
+            if (_transport?.IsSecure != true ||
+                Capabilities?.SaslMechanisms.Contains("SCRAM-SHA-256-PLUS") != true)
+            {
+                return false;
+            }
+
+            byte[]? binding = null;
+            try
+            {
+                return _transport.TryGetTlsServerEndPointBinding(out binding) &&
+                    binding.Length > 0;
+            }
+            catch (ManageSieveAuthenticationException)
+            {
+                return false;
+            }
+            finally
+            {
+                if (binding is not null)
+                {
+                    CryptographicOperations.ZeroMemory(binding);
+                }
+            }
+        }
+    }
 
     public async ValueTask ConnectAsync(CancellationToken cancellationToken = default)
     {
@@ -183,11 +214,44 @@ public sealed class ManageSieveClient : IManageSieveClient
         }
 
         await _commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
+        byte[]? channelBinding = null;
         try
         {
             using CancellationTokenSource timeout = CreateTimeout(
                 Options.OperationTimeout,
                 cancellationToken);
+            if (authenticator is IManageSieveChannelBindingAuthenticator bindingAuthenticator)
+            {
+                try
+                {
+                    if (!bindingAuthenticator.ChannelBindingName.Equals(
+                            "tls-server-end-point",
+                            StringComparison.Ordinal) ||
+                        !_transport!.TryGetTlsServerEndPointBinding(out channelBinding) ||
+                        channelBinding.Length == 0)
+                    {
+                        throw new ManageSieveAuthenticationException(
+                            "SCRAM-SHA-256-PLUS requires a supported TLS 1.2 channel binding.");
+                    }
+
+                    bindingAuthenticator.SetChannelBinding(channelBinding);
+                }
+                catch
+                {
+                    try
+                    {
+                        authenticator.Abort();
+                    }
+                    catch
+                    {
+                        throw new ManageSieveAuthenticationException(
+                            "ManageSieve authentication cleanup failed.");
+                    }
+
+                    throw;
+                }
+            }
+
             var exchange = new ManageSieveAuthenticationExchange(
                 _transport!.Stream,
                 _reader!,
@@ -240,6 +304,11 @@ public sealed class ManageSieveClient : IManageSieveClient
         }
         finally
         {
+            if (channelBinding is not null)
+            {
+                CryptographicOperations.ZeroMemory(channelBinding);
+            }
+
             _commandLock.Release();
         }
     }

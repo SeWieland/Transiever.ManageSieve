@@ -21,6 +21,11 @@ public interface IManageSieveClient : IAsyncDisposable
     ManageSieveCapabilities? Capabilities { get; }
 
     /// <summary>
+    /// Gets whether SCRAM-SHA-256-PLUS is currently advertised and locally usable.
+    /// </summary>
+    bool CanUseScramSha256Plus => false;
+
+    /// <summary>
     /// Opens a TCP connection and reads the server greeting.
     /// </summary>
     ValueTask ConnectAsync(CancellationToken cancellationToken = default);

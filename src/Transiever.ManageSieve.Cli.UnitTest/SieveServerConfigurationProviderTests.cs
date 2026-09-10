@@ -67,14 +67,14 @@ public sealed class SieveServerConfigurationProviderTests
         var provider = CreateProvider(
             new Dictionary<string, string?>
             {
-                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "plain"
+                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "scram-sha-256"
             });
 
         Assert.Equal(
-            ManageSieveSaslMechanism.ScramSha256,
+            ManageSieveSaslMechanism.ScramSha256Plus,
             provider.GetSaslMechanism(
                 CommandLineOptions.Parse(
-                    ["list", "--sieve-sasl-mechanism", "scram-sha-256"])));
+                    ["list", "--sieve-sasl-mechanism", "scram-sha-256-plus"])));
     }
 
     [Fact]
@@ -83,11 +83,11 @@ public sealed class SieveServerConfigurationProviderTests
         var provider = CreateProvider(
             new Dictionary<string, string?>
             {
-                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "scram-sha-256"
+                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "scram-sha-256-plus"
             });
 
         Assert.Equal(
-            ManageSieveSaslMechanism.ScramSha256,
+            ManageSieveSaslMechanism.ScramSha256Plus,
             provider.GetSaslMechanism(CommandLineOptions.Parse(["list"])));
     }
 
