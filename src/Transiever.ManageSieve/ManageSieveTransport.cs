@@ -100,6 +100,7 @@ internal sealed class TcpManageSieveTransport(
             throw CreateUnsupportedTlsServerEndPointBindingException();
         }
 
+        // Source: https://github.com/dotnet/runtime/blob/9c868a69706dd2ce2494fe9d746835ebac3fcb31/src/libraries/System.Net.Security/src/System/Net/Security/Pal.Managed/EndpointChannelBindingToken.cs#L28
         return signatureAlgorithmOid switch
         {
             "1.2.840.113549.1.1.4" or
