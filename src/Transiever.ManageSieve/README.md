@@ -31,6 +31,7 @@ For a human-oriented overview and tool picker, see the [Transiever ManageSieve g
 * `ManageSievePlainAuthenticator` provides SASL PLAIN and is rejected on an unsecured connection.
 * `ManageSieveScramSha256Authenticator` provides the protected `SCRAM-SHA-256` password exchange.
 * `ManageSieveScramSha256PlusAuthenticator` provides protected, channel-bound `SCRAM-SHA-256-PLUS`.
+* `ManageSieveOAuthBearerAuthenticator` provides protected `OAUTHBEARER` with a caller-supplied access token.
 * Typed exceptions distinguish connection, authentication, protocol, and command failures.
 
 See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md) for the SASL lifecycle, security, memory ownership, diagnostics, and failure contract.
@@ -58,6 +59,32 @@ The exchange contract, bounds, proof validation, diagnostics, and cleanup owners
 `ManageSieveScramSha256PlusAuthenticator` has the same identity and password contract, but uses the `SCRAM-SHA-256-PLUS` mechanism with the `tls-server-end-point` channel binding.
 The public constructor does not accept a binding; after TLS and capability validation, the client derives the binding from the verified peer certificate immediately before the initial response while holding the command lock.
 PLUS is available only for TLS 1.2 connections with a supported certificate signature algorithm; TLS 1.3 is rejected because the public .NET API does not expose the RFC 9266 `tls-exporter` primitive.
+
+### OAUTHBEARER
+
+Construct `ManageSieveOAuthBearerAuthenticator` with `accessToken`, the effective ManageSieve `host` and `port`, and an optional `authorizationIdentity`:
+
+```csharp
+IManageSieveAuthenticator authenticator =
+    new ManageSieveOAuthBearerAuthenticator(accessToken, options.Host, options.Port);
+
+await client.StartTlsAsync();
+await client.AuthenticateAsync(authenticator);
+```
+
+The mechanism name is exactly `OAUTHBEARER` and protected transport is always required.
+The access token must use the RFC 6750 `b64token` grammar and is framed by the client with normal Base64 for the ManageSieve SASL exchange; the token itself is not decoded or re-encoded.
+The initial response uses the RFC 7628 GS2 form with the supplied host and port, the fixed `sieve` service semantics, and the exact `0x01` separators required by the RFC.
+The service is represented by the GS2 framing and does not add an invented wire key.
+The host must be non-empty ASCII, at most 255 bytes, and contain no control characters.
+Callers must supply internationalized DNS names as IDNA A-labels; the authenticator performs no IDNA normalization.
+An authorization identity remains strict UTF-8 and is limited to 1,024 bytes; NUL is rejected.
+
+The authenticator receives the token in memory from its caller; it does not acquire, refresh, revoke, store, persist, discover, or apply provider policy to tokens.
+On a server error challenge, `ServerError` exposes the safe `ManageSieveOAuthBearerError` record with `Status`, optional `Scope`, and optional `OpenIdConfiguration` values.
+The `openid-configuration` value is diagnostic data only: it is an HTTPS absolute URL without userinfo or a fragment and is never fetched or cached.
+The client accepts direct success only through `CompleteAsync(null)`.
+See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md#oauthbearer) for the exact error bounds, diagnostics, and cleanup contract.
 
 ## Script operations
 
