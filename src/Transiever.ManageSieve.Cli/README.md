@@ -85,7 +85,7 @@ The port and security mode are optional.
 The default is port `4190` with required STARTTLS.
 `ImplicitTls` is also supported.
 
-Authentication uses `--sieve-sasl-mechanism auto|plain|scram-sha-256|scram-sha-256-plus` or the
+Authentication uses `--sieve-sasl-mechanism auto|plain|scram-sha-256|scram-sha-256-plus|oauthbearer` or the
 `TRANSIEVER_SIEVE_SASL_MECHANISM` environment variable.
 The precedence is command-line option, environment variable, then the default
 `auto`.
@@ -105,3 +105,28 @@ before choosing an explicit mechanism; this command does not authenticate.
 
 Authenticated commands refuse plaintext credentials.
 If the password variable is absent, an interactive terminal prompts without echoing it.
+
+### OAUTHBEARER
+
+Select `OAUTHBEARER` explicitly with:
+
+```text
+--sieve-sasl-mechanism oauthbearer
+```
+
+OAuth delegation lets a caller grant access without sharing its password, following [RFC 7628](https://www.rfc-editor.org/rfc/rfc7628) and the [RFC 6750](https://www.rfc-editor.org/rfc/rfc6750) bearer-token model.
+Because possession is authority, anyone who obtains the token can use it until the provider expires or revokes it; protect token input and transport accordingly.
+
+The CLI reads one non-empty token line from standard input when
+`--sieve-oauth-token-stdin` is present.
+Without that selector, it uses a hidden interactive TTY prompt.
+Bearer-token values are never accepted in command-line arguments or environment variables.
+Redirected or noninteractive input without `--sieve-oauth-token-stdin` fails before authentication.
+
+The CLI establishes protected transport and checks the authoritative post-TLS `SASL` advertisement before it reads the token.
+It passes the effective host and port, including command-line and environment overrides, to `ManageSieveOAuthBearerAuthenticator`.
+Plaintext transport, a missing post-TLS `OAUTHBEARER` advertisement, and authentication rejection all fail without downgrading to another mechanism.
+
+`auto` never selects `OAUTHBEARER`.
+Its order remains advertised, locally usable `SCRAM-SHA-256-PLUS`, then `SCRAM-SHA-256`, then `PLAIN`.
+Use `msieve capabilities` to inspect the server's advertised SASL mechanisms only; it performs no OAuth or OpenID Connect discovery and never requests a token.

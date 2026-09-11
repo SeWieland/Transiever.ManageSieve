@@ -15,6 +15,8 @@ public interface ISieveServerConfigurationProvider
 
     SieveServerConfiguration GetAuthenticatedConfiguration(
         CommandLineOptions options);
+
+    string GetOAuthBearerToken(CommandLineOptions options);
 }
 
 public sealed class EnvironmentSieveServerConfigurationProvider
@@ -23,23 +25,31 @@ public sealed class EnvironmentSieveServerConfigurationProvider
     private readonly Func<string, string?> _readEnvironment;
     private readonly Func<bool> _isInputRedirected;
     private readonly Func<string> _readPassword;
+    private readonly Func<string> _readOAuthToken;
+    private readonly Func<string?> _readLine;
 
     public EnvironmentSieveServerConfigurationProvider()
         : this(
             Environment.GetEnvironmentVariable,
             () => Console.IsInputRedirected,
-            ReadPassword)
+            ReadPassword,
+            ReadOAuthToken,
+            Console.ReadLine)
     {
     }
 
     public EnvironmentSieveServerConfigurationProvider(
         Func<string, string?> readEnvironment,
         Func<bool> isInputRedirected,
-        Func<string> readPassword)
+        Func<string> readPassword,
+        Func<string>? readOAuthToken = null,
+        Func<string?>? readLine = null)
     {
         _readEnvironment = readEnvironment;
         _isInputRedirected = isInputRedirected;
         _readPassword = readPassword;
+        _readOAuthToken = readOAuthToken ?? readPassword;
+        _readLine = readLine ?? Console.ReadLine;
     }
 
     public ManageSieveClientOptions GetConnectionOptions(
@@ -76,6 +86,31 @@ public sealed class EnvironmentSieveServerConfigurationProvider
             options.SievePassword ?? Read("PASSWORD") ?? ReadPasswordOrThrow();
 
         return new SieveServerConfiguration(clientOptions, userName, password);
+    }
+
+    public string GetOAuthBearerToken(CommandLineOptions options)
+    {
+        if (GetSaslMechanism(options) != ManageSieveSaslMechanism.OAuthBearer)
+        {
+            throw new InvalidOperationException(
+                "An OAuth bearer token is valid only with the oauthbearer SASL mechanism.");
+        }
+
+        if (options.SieveOAuthTokenStdin)
+        {
+            return _readLine() is { Length: > 0 } token
+                ? token
+                : throw new InvalidOperationException(
+                    "Standard input did not contain an OAuth bearer token.");
+        }
+
+        if (_isInputRedirected())
+        {
+            throw new InvalidOperationException(
+                "Use --sieve-oauth-token-stdin to read an OAuth bearer token from redirected standard input.");
+        }
+
+        return _readOAuthToken();
     }
 
     private int ReadPort()
@@ -131,6 +166,7 @@ public sealed class EnvironmentSieveServerConfigurationProvider
             "plain" => ManageSieveSaslMechanism.Plain,
             "scram-sha-256" => ManageSieveSaslMechanism.ScramSha256,
             "scram-sha-256-plus" => ManageSieveSaslMechanism.ScramSha256Plus,
+            "oauthbearer" => ManageSieveSaslMechanism.OAuthBearer,
             _ => throw new InvalidOperationException(
                 $"Unknown Sieve SASL mechanism: {value}")
         };
@@ -158,10 +194,16 @@ public sealed class EnvironmentSieveServerConfigurationProvider
         return _readPassword();
     }
 
-    private static string ReadPassword()
+    private static string ReadPassword() =>
+        ReadSecret("ManageSieve password: ");
+
+    private static string ReadOAuthToken() =>
+        ReadSecret("ManageSieve OAuth bearer token: ");
+
+    private static string ReadSecret(string prompt)
     {
-        Console.Write("ManageSieve password: ");
-        var password = new System.Text.StringBuilder();
+        Console.Write(prompt);
+        var secret = new System.Text.StringBuilder();
         while (true)
         {
             ConsoleKeyInfo key = Console.ReadKey(intercept: true);
@@ -172,9 +214,9 @@ public sealed class EnvironmentSieveServerConfigurationProvider
 
             if (key.Key == ConsoleKey.Backspace)
             {
-                if (password.Length > 0)
+                if (secret.Length > 0)
                 {
-                    password.Length--;
+                    secret.Length--;
                 }
 
                 continue;
@@ -182,11 +224,11 @@ public sealed class EnvironmentSieveServerConfigurationProvider
 
             if (!char.IsControl(key.KeyChar))
             {
-                password.Append(key.KeyChar);
+                secret.Append(key.KeyChar);
             }
         }
 
         Console.WriteLine();
-        return password.ToString();
+        return secret.ToString();
     }
 }

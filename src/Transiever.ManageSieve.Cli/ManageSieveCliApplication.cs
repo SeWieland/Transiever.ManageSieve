@@ -219,19 +219,32 @@ public sealed class ManageSieveCliApplication
                 capabilities.SaslMechanisms,
                 client);
 
-            SieveServerConfiguration configuration = _configurationProvider.GetAuthenticatedConfiguration(options);
-            IManageSieveAuthenticator authenticator = selectedMechanism switch
+            IManageSieveAuthenticator authenticator;
+            if (selectedMechanism == "OAUTHBEARER")
             {
-                "SCRAM-SHA-256-PLUS" => new ManageSieveScramSha256PlusAuthenticator(
-                    configuration.UserName,
-                    configuration.Password),
-                "SCRAM-SHA-256" => new ManageSieveScramSha256Authenticator(
-                    configuration.UserName,
-                    configuration.Password),
-                _ => new ManageSievePlainAuthenticator(
-                    configuration.UserName,
-                    configuration.Password)
-            };
+                string token = _configurationProvider.GetOAuthBearerToken(options);
+                authenticator = new ManageSieveOAuthBearerAuthenticator(
+                    token,
+                    connectionOptions.Host,
+                    connectionOptions.Port);
+            }
+            else
+            {
+                SieveServerConfiguration configuration =
+                    _configurationProvider.GetAuthenticatedConfiguration(options);
+                authenticator = selectedMechanism switch
+                {
+                    "SCRAM-SHA-256-PLUS" => new ManageSieveScramSha256PlusAuthenticator(
+                        configuration.UserName,
+                        configuration.Password),
+                    "SCRAM-SHA-256" => new ManageSieveScramSha256Authenticator(
+                        configuration.UserName,
+                        configuration.Password),
+                    _ => new ManageSievePlainAuthenticator(
+                        configuration.UserName,
+                        configuration.Password)
+                };
+            }
 
             await client.AuthenticateAsync(authenticator, cancellationToken);
             return client;
@@ -275,6 +288,7 @@ public sealed class ManageSieveCliApplication
             ManageSieveSaslMechanism.Plain => "PLAIN",
             ManageSieveSaslMechanism.ScramSha256 => "SCRAM-SHA-256",
             ManageSieveSaslMechanism.ScramSha256Plus => "SCRAM-SHA-256-PLUS",
+            ManageSieveSaslMechanism.OAuthBearer => "OAUTHBEARER",
             _ => throw new ManageSieveAuthenticationException(
                 $"Unknown Sieve SASL mechanism: {requested}.")
         };

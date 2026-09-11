@@ -8,7 +8,8 @@ public enum ManageSieveSaslMechanism
     Auto,
     Plain,
     ScramSha256,
-    ScramSha256Plus
+    ScramSha256Plus,
+    OAuthBearer
 }
 
 public sealed class CommandLineOptions
@@ -35,6 +36,8 @@ public sealed class CommandLineOptions
 
     public ManageSieveSaslMechanism? SieveSaslMechanism { get; private init; }
 
+    public bool SieveOAuthTokenStdin { get; private init; }
+
     public bool ShowHelp { get; private init; }
 
     public static CommandLineOptions Parse(IReadOnlyList<string> args)
@@ -57,6 +60,7 @@ public sealed class CommandLineOptions
         string? sievePassword = null;
         ManageSieveSecurityMode? sieveSecurity = null;
         ManageSieveSaslMechanism? sieveSaslMechanism = null;
+        var sieveOAuthTokenStdin = false;
 
         while (index < args.Count)
         {
@@ -91,6 +95,9 @@ public sealed class CommandLineOptions
                 case "--sieve-sasl-mechanism":
                     sieveSaslMechanism = ParseSieveSaslMechanism(
                         ReadOptionValue(args, ref index, option));
+                    break;
+                case "--sieve-oauth-token-stdin":
+                    sieveOAuthTokenStdin = true;
                     break;
                 case "-h":
                 case "--help":
@@ -129,7 +136,8 @@ public sealed class CommandLineOptions
             SieveUserName = sieveUserName,
             SievePassword = sievePassword,
             SieveSecurity = sieveSecurity,
-            SieveSaslMechanism = sieveSaslMechanism
+            SieveSaslMechanism = sieveSaslMechanism,
+            SieveOAuthTokenStdin = sieveOAuthTokenStdin
         };
     }
 
@@ -251,6 +259,7 @@ public sealed class CommandLineOptions
             "plain" => ManageSieveSaslMechanism.Plain,
             "scram-sha-256" => ManageSieveSaslMechanism.ScramSha256,
             "scram-sha-256-plus" => ManageSieveSaslMechanism.ScramSha256Plus,
+            "oauthbearer" => ManageSieveSaslMechanism.OAuthBearer,
             _ => throw new ArgumentException(
                 $"Unknown Sieve SASL mechanism: {value}")
         };

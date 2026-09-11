@@ -39,6 +39,34 @@ public sealed class ManageSieveCliApplicationTests
     }
 
     [Fact]
+    public async Task CapabilitiesDoesNotRequestOAuthBearerToken()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["OAUTHBEARER"])
+            }
+        };
+        var provider = new TrackingSieveServerConfigurationProvider();
+        TestApplication app = CreateApplication(client, provider);
+
+        await app.Application.RunAsync(
+            CommandLineOptions.Parse(
+            [
+                "capabilities",
+                "--sieve-sasl-mechanism",
+                "oauthbearer",
+                "--sieve-oauth-token-stdin"
+            ]),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(provider.TokenRequested);
+        Assert.False(provider.CredentialsRequested);
+        Assert.Null(client.Authenticator);
+    }
+
+    [Fact]
     public async Task ListPrintsScriptsAndAuthenticates()
     {
         var client = new FakeManageSieveClient
@@ -122,6 +150,173 @@ public sealed class ManageSieveCliApplicationTests
             TestContext.Current.CancellationToken);
 
         Assert.IsType<ManageSieveScramSha256PlusAuthenticator>(client.Authenticator);
+    }
+
+    [Fact]
+    public async Task ExplicitOAuthBearerUsesEffectiveAuthorityFromPostTlsConnection()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities(),
+            CapabilitiesAfterStartTls = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["OAUTHBEARER"])
+            }
+        };
+        var provider = new TrackingSieveServerConfigurationProvider
+        {
+            ConnectionOptions = new ManageSieveClientOptions
+            {
+                Host = "effective.example.com",
+                Port = 2000,
+                SecurityMode = ManageSieveSecurityMode.StartTlsRequired
+            }
+        };
+        TestApplication app = CreateApplication(client, provider);
+
+        await app.Application.RunAsync(
+            CommandLineOptions.Parse(
+                ["list", "--sieve-sasl-mechanism", "oauthbearer"]),
+            TestContext.Current.CancellationToken);
+
+        var authenticator =
+            Assert.IsType<ManageSieveOAuthBearerAuthenticator>(client.Authenticator);
+        ReadOnlyMemory<byte>? response = await authenticator.GetInitialResponseAsync(
+            TestContext.Current.CancellationToken);
+        Assert.Equal(
+            "n,,\u0001host=effective.example.com\u0001port=2000\u0001auth=Bearer access-token\u0001\u0001",
+            Encoding.UTF8.GetString(response!.Value.Span));
+        authenticator.Abort();
+        Assert.True(provider.TokenRequested);
+        Assert.False(provider.CredentialsRequested);
+    }
+
+    [Fact]
+    public async Task ExplicitOAuthBearerRejectsPlaintextBeforeTokenInput()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["OAUTHBEARER"])
+            }
+        };
+        var provider = new TrackingSieveServerConfigurationProvider
+        {
+            ConnectionOptions = new ManageSieveClientOptions
+            {
+                Host = "sieve.example.com",
+                SecurityMode = ManageSieveSecurityMode.PlainText
+            }
+        };
+        TestApplication app = CreateApplication(client, provider);
+
+        await Assert.ThrowsAsync<InvalidOperationException>(
+            () => app.Application.RunAsync(
+                CommandLineOptions.Parse(
+                    ["list", "--sieve-sasl-mechanism", "oauthbearer"]),
+                TestContext.Current.CancellationToken));
+
+        Assert.False(provider.TokenRequested);
+        Assert.False(client.Connected);
+        Assert.Null(client.Authenticator);
+    }
+
+    [Fact]
+    public async Task ExplicitOAuthBearerRejectsMissingPostTlsAdvertisementBeforeTokenInput()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["OAUTHBEARER"])
+            },
+            CapabilitiesAfterStartTls = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["PLAIN"])
+            }
+        };
+        var provider = new TrackingSieveServerConfigurationProvider();
+        TestApplication app = CreateApplication(client, provider);
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => app.Application.RunAsync(
+                CommandLineOptions.Parse(
+                    ["list", "--sieve-sasl-mechanism", "oauthbearer"]),
+                TestContext.Current.CancellationToken));
+
+        Assert.True(client.StartTlsCalled);
+        Assert.False(provider.TokenRequested);
+        Assert.Null(client.Authenticator);
+    }
+
+    [Fact]
+    public async Task ExplicitOAuthBearerDoesNotDowngradeAfterRejection()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["OAUTHBEARER", "PLAIN"])
+            },
+            AuthenticationException = new ManageSieveAuthenticationException(
+                "ManageSieve authentication failed.")
+        };
+        TestApplication app = CreateApplication(client);
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => app.Application.RunAsync(
+                CommandLineOptions.Parse(
+                    ["list", "--sieve-sasl-mechanism", "oauthbearer"]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(1, client.AuthenticationAttempts);
+        Assert.IsType<ManageSieveOAuthBearerAuthenticator>(client.Authenticator);
+    }
+
+    [Fact]
+    public async Task AutoIgnoresAdvertisedOAuthBearer()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["OAUTHBEARER", "PLAIN"])
+            }
+        };
+        var provider = new TrackingSieveServerConfigurationProvider();
+        TestApplication app = CreateApplication(client, provider);
+
+        await app.Application.RunAsync(
+            CommandLineOptions.Parse(["list"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.IsType<ManageSievePlainAuthenticator>(client.Authenticator);
+        Assert.False(provider.TokenRequested);
+        Assert.True(provider.CredentialsRequested);
+    }
+
+    [Fact]
+    public async Task AutoRejectsOAuthBearerOnlyBeforeCredentialInput()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["OAUTHBEARER"])
+            }
+        };
+        var provider = new TrackingSieveServerConfigurationProvider();
+        TestApplication app = CreateApplication(client, provider);
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => app.Application.RunAsync(
+                CommandLineOptions.Parse(["list"]),
+                TestContext.Current.CancellationToken));
+
+        Assert.False(provider.TokenRequested);
+        Assert.False(provider.CredentialsRequested);
+        Assert.Null(client.Authenticator);
     }
 
     [Theory]
@@ -501,6 +696,9 @@ public sealed class ManageSieveCliApplicationTests
                 GetConnectionOptions(options),
                 "user@example.com",
                 "secret");
+
+        public string GetOAuthBearerToken(CommandLineOptions options) =>
+            "access-token";
     }
 
     private sealed class TrackingSieveServerConfigurationProvider
@@ -508,16 +706,20 @@ public sealed class ManageSieveCliApplicationTests
     {
         public bool CredentialsRequested { get; private set; }
 
-        public ManageSieveSaslMechanism SaslMechanism { get; set; } =
-            ManageSieveSaslMechanism.Auto;
+        public bool TokenRequested { get; private set; }
 
-        public ManageSieveClientOptions GetConnectionOptions(
-            CommandLineOptions options) =>
+        public ManageSieveClientOptions ConnectionOptions { get; set; } =
             new()
             {
                 Host = "sieve.example.com",
                 SecurityMode = ManageSieveSecurityMode.StartTlsRequired
             };
+
+        public ManageSieveSaslMechanism SaslMechanism { get; set; } =
+            ManageSieveSaslMechanism.Auto;
+
+        public ManageSieveClientOptions GetConnectionOptions(
+            CommandLineOptions options) => ConnectionOptions;
 
         public ManageSieveSaslMechanism GetSaslMechanism(
             CommandLineOptions options) =>
@@ -531,6 +733,12 @@ public sealed class ManageSieveCliApplicationTests
                 GetConnectionOptions(options),
                 "user@example.com",
                 "secret");
+        }
+
+        public string GetOAuthBearerToken(CommandLineOptions options)
+        {
+            TokenRequested = true;
+            return "access-token";
         }
     }
 

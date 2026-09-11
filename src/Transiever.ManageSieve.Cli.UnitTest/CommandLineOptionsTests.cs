@@ -54,6 +54,7 @@ public sealed class CommandLineOptionsTests
     [InlineData("plain", ManageSieveSaslMechanism.Plain)]
     [InlineData("scram-sha-256", ManageSieveSaslMechanism.ScramSha256)]
     [InlineData("scram-sha-256-plus", ManageSieveSaslMechanism.ScramSha256Plus)]
+    [InlineData("oauthbearer", ManageSieveSaslMechanism.OAuthBearer)]
     public void ParseReadsSaslMechanism(string value, ManageSieveSaslMechanism expected)
     {
         CommandLineOptions options = CommandLineOptions.Parse(
@@ -70,6 +71,35 @@ public sealed class CommandLineOptionsTests
                 ["list", "--sieve-sasl-mechanism", "login"]));
 
         Assert.Contains("SASL mechanism", exception.Message);
+    }
+
+    [Fact]
+    public void ParseReadsOAuthBearerTokenStdinAsBooleanSelector()
+    {
+        CommandLineOptions options = CommandLineOptions.Parse(
+            ["list", "--sieve-oauth-token-stdin"]);
+
+        Assert.True(options.SieveOAuthTokenStdin);
+    }
+
+    [Fact]
+    public void ParseRejectsTokenValuedOption()
+    {
+        ArgumentException exception = Assert.Throws<ArgumentException>(
+            () => CommandLineOptions.Parse(
+                ["list", "--sieve-oauth-token", "secret"]));
+
+        Assert.Contains("Unknown option", exception.Message);
+    }
+
+    [Fact]
+    public void ParseDoesNotTreatValueAfterOAuthBearerTokenStdinAsToken()
+    {
+        ArgumentException exception = Assert.Throws<ArgumentException>(
+            () => CommandLineOptions.Parse(
+                ["list", "--sieve-oauth-token-stdin", "secret"]));
+
+        Assert.Contains("Unexpected argument", exception.Message);
     }
 
     [Theory]
