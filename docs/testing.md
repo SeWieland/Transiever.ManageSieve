@@ -33,6 +33,15 @@ The known-answer case is based on the published RFC 7677 SHA-256 vector; the int
 Tests use synthetic credentials and distinct secret sentinels only.
 They do not contact providers, require provider credentials, or treat copied transcript bytes as zeroizable authenticator-owned memory.
 
+## OAUTHBEARER Conformance
+
+OAUTHBEARER coverage is deterministic and offline through the same harness.
+It asserts the exact RFC 7628 initial response and Base64 framing, actual `0x01` GS2 separators, effective host and port propagation, fixed `OAUTHBEARER` advertisement, valid error data and the exact `0x01` dummy response encoded as `AQ==`.
+It covers decoded-challenge bounds, strict UTF-8 and JSON depth, the case-sensitive recognized-property allowlist, UTF-8 field limits, duplicate and malformed values, HTTPS URL validation, unknown-field discard, access-token echo rejection, direct `CompleteAsync(null)` success, safe `ServerError` inspection after terminal `NO`, and redaction.
+Lifecycle cases cover precondition and post-TLS advertisement gates, cancellation, timeout, `BYE`, malformed challenge or completion data, no downgrade, synchronized rejection, disconnect cleanup, and authenticator-owned and client-owned buffer clearing.
+These tests use synthetic in-memory tokens and transcripts only.
+They make no live token, provider, HTTP, OAuth, OpenID Connect, or Docker request.
+
 Run only the PLUS conformance cases with:
 
 ```bash

@@ -15,6 +15,8 @@ It is specified by [RFC 5802](https://www.rfc-editor.org/rfc/rfc5802) and the SH
 `SCRAM-SHA-256-PLUS` adds channel binding so the proof is tied to the TLS connection and its peer certificate.
 This implementation uses the `tls-server-end-point` binding from [RFC 5929](https://www.rfc-editor.org/rfc/rfc5929), while [RFC 9266](https://www.rfc-editor.org/rfc/rfc9266) defines the `tls-exporter` binding for newer TLS versions.
 Both SCRAM mechanisms require protected transport; PLUS additionally requires a supported TLS 1.2 endpoint binding.
+`OAUTHBEARER` is for a caller that already has an access token and wants the server to validate it.
+It does not acquire or refresh a token, and it is not a replacement for provider-specific OAuth or OpenID Connect policy.
 
 ## Before authentication
 
@@ -74,6 +76,47 @@ Only TLS 1.2 is supported for this binding.
 TLS 1.3 fails closed with the fixed `SCRAM-SHA-256-PLUS requires a supported TLS 1.2 channel binding.` message because the public .NET API does not expose the RFC 9266 `tls-exporter` primitive.
 The implementation does not substitute `tls-unique`, `TransportContext`, fallback authentication, or native interop.
 An unavailable binding is a PLUS failure, not a reason to emit an unbound SCRAM exchange.
+
+## OAUTHBEARER
+
+`ManageSieveOAuthBearerAuthenticator(accessToken, host, port, authorizationIdentity?)` implements exactly `OAUTHBEARER` from [RFC 7628](https://www.rfc-editor.org/rfc/rfc7628).
+Its `AllowsUnprotectedConnection` value is `false`, so the client requires TLS before invoking the authenticator.
+The access token must be a non-empty RFC 6750 `b64token`, using the unchanged [RFC 6750](https://www.rfc-editor.org/rfc/rfc6750) grammar and a maximum of 16,384 characters.
+The host is the effective ManageSieve host and the port is the effective endpoint port.
+The host must be non-empty ASCII, at most 255 bytes, and contain no control characters.
+Callers must supply internationalized DNS names as IDNA A-labels; the authenticator performs no IDNA normalization.
+An authorization identity remains strict UTF-8 and is limited to 1,024 bytes; NUL is rejected.
+
+The initial response is strict UTF-8 with this GS2 shape:
+
+```text
+n,,<0x01>host=<host><0x01>port=<port><0x01>auth=Bearer <access-token><0x01><0x01>
+```
+
+When an authorization identity is supplied, `n,,` becomes `n,a=<escaped-authorization-identity>,` and commas and equals signs use the GS2 escapes `=2C` and `=3D`.
+The ManageSieve service is fixed to `sieve`; the wire frame has no invented service key.
+The separators above are actual single-byte `0x01` values, not the printable text `<0x01>`.
+The client applies normal Base64 framing to the complete initial response before writing it to ManageSieve.
+
+The server may report an OAuth error as one Base64-decoded challenge.
+The decoded challenge must be 1 to 16 KiB of strict UTF-8 JSON with maximum depth 8 and an object root.
+Only the exact case-sensitive property names `status`, `scope`, and `openid-configuration` are interpreted.
+`status` is required, non-empty, and at most 128 UTF-8 bytes; `scope` is optional and at most 4,096 UTF-8 bytes; `openid-configuration` is optional and at most 2,048 UTF-8 bytes.
+The recognized properties must be strings, may not be duplicated, and may not echo the access token.
+Malformed JSON, invalid UTF-8, wrong value types, duplicate recognized properties, or out-of-range values fail with the fixed `OAUTHBEARER authentication failed.` diagnostic.
+Unknown properties are discarded.
+When `openid-configuration` is present, it must be an absolute HTTPS URL without userinfo or a fragment.
+It is diagnostic data only: the client never fetches or caches it.
+
+After a valid error challenge, `ServerError` exposes the safe `ManageSieveOAuthBearerError` record with `Status`, `Scope`, and `OpenIdConfiguration` properties.
+The authenticator returns exactly one dummy byte, `0x01`; the client Base64-encodes that response as exactly `AQ==` on the wire.
+A terminal server `NO` leaves this record inspectable while the client raises its redacted authentication exception and preserves the synchronized secured session.
+Successful OAUTHBEARER completion accepts no server-final data and succeeds only through `CompleteAsync(null)`.
+Any non-null completion data, a repeated callback, or a malformed error response fails without exposing the server's contents.
+
+The caller supplies the token in memory.
+This library does not acquire, refresh, revoke, store, persist, discover, launch a browser, choose scopes, or implement provider policy.
+It does not make HTTP requests as part of OAUTHBEARER authentication.
 
 ## Exchange lifecycle
 
@@ -153,8 +196,11 @@ Buffers returned by `GetInitialResponseAsync` or `RespondAsync` remain authentic
 They must remain valid until `CompleteAsync` or `Abort`, when the authenticator clears its retained mutable response and secret buffers.
 Callback memory remains client-owned, so an authenticator must not retain challenge or server-final data after the callback.
 
+For OAUTHBEARER, the authenticator clears its mutable initial-response and dummy-response arrays after completion or abort.
+The client clears encoded wire frames and decoded challenge or completion frames after their callbacks and writes.
+
 Clearing is best effort within managed code.
-It cannot guarantee erasure from immutable input strings, garbage-collector or runtime copies, framework, operating-system, or transport buffers, captured wire copies, or server memory.
+It cannot guarantee erasure from immutable input strings, garbage-collector or runtime copies, framework, operating-system, or transport buffers, captured wire copies, server memory, or copied test transcripts.
 
 For SCRAM, the authenticator clears explicitly owned mutable password-derived buffers, client proof, server signature, response, decoded salt, and retained exchange buffers during completion or abort.
 Immutable strings, framework/OS/transport buffers, and copied test transcripts are outside that erasure claim.

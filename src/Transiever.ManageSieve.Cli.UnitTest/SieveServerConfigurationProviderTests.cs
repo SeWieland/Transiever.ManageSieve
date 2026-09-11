@@ -92,6 +92,122 @@ public sealed class SieveServerConfigurationProviderTests
     }
 
     [Fact]
+    public void OAuthBearerTokenReadsOneLineOnlyWhenStdinIsSelected()
+    {
+        var lineReads = 0;
+        var hiddenReads = 0;
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "oauthbearer",
+                ["TRANSIEVER_SIEVE_OAUTH_TOKEN"] = "environment-token"
+            },
+            inputRedirected: true,
+            readOAuthToken: () =>
+            {
+                hiddenReads++;
+                return "hidden-token";
+            },
+            readLine: () =>
+            {
+                lineReads++;
+                return "stdin-token";
+            });
+
+        string token = provider.GetOAuthBearerToken(
+            CommandLineOptions.Parse(
+                ["list", "--sieve-oauth-token-stdin"]));
+
+        Assert.Equal("stdin-token", token);
+        Assert.Equal(1, lineReads);
+        Assert.Equal(0, hiddenReads);
+    }
+
+    [Fact]
+    public void OAuthBearerTokenUsesHiddenPromptOnInteractiveInput()
+    {
+        var lineReads = 0;
+        var hiddenReads = 0;
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "oauthbearer"
+            },
+            readOAuthToken: () =>
+            {
+                hiddenReads++;
+                return "hidden-token";
+            },
+            readLine: () =>
+            {
+                lineReads++;
+                return "stdin-token";
+            });
+
+        string token = provider.GetOAuthBearerToken(
+            CommandLineOptions.Parse(["list"]));
+
+        Assert.Equal("hidden-token", token);
+        Assert.Equal(0, lineReads);
+        Assert.Equal(1, hiddenReads);
+    }
+
+    [Fact]
+    public void OAuthBearerTokenRejectsRedirectedInputWithoutStdinSelector()
+    {
+        var inputReads = 0;
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "oauthbearer",
+                ["TRANSIEVER_SIEVE_OAUTH_TOKEN"] = "environment-token"
+            },
+            inputRedirected: true,
+            readOAuthToken: () =>
+            {
+                inputReads++;
+                return "hidden-token";
+            },
+            readLine: () =>
+            {
+                inputReads++;
+                return "stdin-token";
+            });
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(
+                () => provider.GetOAuthBearerToken(
+                    CommandLineOptions.Parse(["list"])));
+
+        Assert.Contains("--sieve-oauth-token-stdin", exception.Message);
+        Assert.Equal(0, inputReads);
+    }
+
+    [Fact]
+    public void OAuthBearerTokenRejectsNonOAuthSelectionWithoutReadingInput()
+    {
+        var inputReads = 0;
+        var provider = CreateProvider(
+            new Dictionary<string, string?>(),
+            readOAuthToken: () =>
+            {
+                inputReads++;
+                return "hidden-token";
+            },
+            readLine: () =>
+            {
+                inputReads++;
+                return "stdin-token";
+            });
+
+        Assert.Throws<InvalidOperationException>(
+            () => provider.GetOAuthBearerToken(
+                CommandLineOptions.Parse(["list"])));
+
+        Assert.Equal(0, inputReads);
+    }
+
+    [Fact]
     public void SaslMechanismRejectsInvalidEnvironmentValue()
     {
         var provider = CreateProvider(
@@ -184,11 +300,15 @@ public sealed class SieveServerConfigurationProviderTests
 
     private static EnvironmentSieveServerConfigurationProvider CreateProvider(
         IReadOnlyDictionary<string, string?> environment,
-        bool inputRedirected = false) =>
+        bool inputRedirected = false,
+        Func<string>? readOAuthToken = null,
+        Func<string?>? readLine = null) =>
         new(
             name => environment.TryGetValue(name, out string? value)
                 ? value
                 : null,
             () => inputRedirected,
-            () => "prompted");
+            () => "prompted",
+            readOAuthToken ?? (() => "oauth-token"),
+            readLine ?? (() => null));
 }

@@ -68,7 +68,7 @@ src/Transiever.ManageSieve.LiveTest/        Explicitly enabled live-provider tes
 * Stateful async client API for the RFC 5804 command surface.
 * Streaming parser for fragmented responses, quoted strings, response codes, and byte-counted literals.
 * TCP, STARTTLS, and implicit TLS transport with platform certificate validation.
-* SASL authentication abstraction with PLAIN, SCRAM-SHA-256, and channel-bound SCRAM-SHA-256-PLUS support.
+* SASL authentication abstraction with PLAIN, SCRAM-SHA-256, channel-bound SCRAM-SHA-256-PLUS, and OAUTHBEARER support.
 * `msieve` CLI commands for capabilities, list, get, check, put, activate, deactivate, and delete.
 * Deterministic unit tests plus optional Docker and live-provider coverage.
   Docker coverage uses a pinned Dovecot/Pigeonhole container and pins the container certificate through an internal test seam.
