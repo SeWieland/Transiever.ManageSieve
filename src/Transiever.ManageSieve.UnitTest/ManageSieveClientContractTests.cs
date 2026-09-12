@@ -117,6 +117,32 @@ public sealed class ManageSieveClientContractTests
         Assert.True(transport.IsDisposed);
     }
 
+    [Fact]
+    public async Task DisposeAsync_ReportsSafeFailureAndClosesClientWhenTransportDisposalThrows()
+    {
+        const string unsafeDetail = "unsafe-dispose-sentinel";
+        var transport = new ScriptedManageSieveTransport(
+            "OK\r\n"u8.ToArray(),
+            disposeException: new InvalidOperationException(unsafeDetail));
+        var client = CreateClient(transport: transport);
+        await client.ConnectAsync(TestContext.Current.CancellationToken);
+
+        ManageSieveConnectionException exception =
+            await Assert.ThrowsAsync<ManageSieveConnectionException>(
+                () => client.DisposeAsync().AsTask());
+
+        Assert.Equal("ManageSieve client disposal failed.", exception.Message);
+        Assert.Null(exception.InnerException);
+        Assert.DoesNotContain(unsafeDetail, exception.ToString(), StringComparison.Ordinal);
+        Assert.Equal(ManageSieveSessionState.Closed, client.State);
+        Assert.Null(client.Capabilities);
+        Assert.True(transport.IsDisposed);
+        await Assert.ThrowsAsync<ObjectDisposedException>(
+            () => client.ConnectAsync(TestContext.Current.CancellationToken).AsTask());
+
+        await client.DisposeAsync();
+    }
+
     private static ManageSieveClient CreateClient(
         string host = "sieve.example.com",
         int port = 4190,
