@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Transiever.ManageSieve;
 using Transiever.ManageSieve.Cli;
@@ -294,6 +296,76 @@ public sealed class ManageSieveCliApplicationTests
         Assert.IsType<ManageSievePlainAuthenticator>(client.Authenticator);
         Assert.False(provider.TokenRequested);
         Assert.True(provider.CredentialsRequested);
+    }
+
+    [Fact]
+    public async Task ExplicitExternalUsesEmptyIdentityAndDisposesCertificateAfterClient()
+    {
+        using X509Certificate2 certificate = CreateCertificate();
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["EXTERNAL"])
+            }
+        };
+        var provider = new TrackingSieveServerConfigurationProvider
+        {
+            SaslMechanism = ManageSieveSaslMechanism.External,
+            ConnectionOptions = new ManageSieveClientOptions
+            {
+                Host = "sieve.example.com",
+                SecurityMode = ManageSieveSecurityMode.ImplicitTls,
+                ClientCertificate = certificate
+            }
+        };
+        TestApplication app = CreateApplication(client, provider);
+
+        await app.Application.RunAsync(
+            CommandLineOptions.Parse(["list", "--sieve-sasl-mechanism", "external"]),
+            TestContext.Current.CancellationToken);
+
+        var authenticator =
+            Assert.IsType<ManageSieveExternalAuthenticator>(client.Authenticator);
+        ReadOnlyMemory<byte>? response = await authenticator.GetInitialResponseAsync(
+            TestContext.Current.CancellationToken);
+        Assert.Empty(response!.Value.ToArray());
+        Assert.True(client.CertificateWasUsableOnDispose);
+        Assert.Throws<CryptographicException>(() => certificate.GetCertHash());
+    }
+
+    [Fact]
+    public async Task ExplicitExternalDoesNotDowngradeAfterRejection()
+    {
+        using X509Certificate2 certificate = CreateCertificate();
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["EXTERNAL", "PLAIN"])
+            },
+            AuthenticationException = new ManageSieveAuthenticationException(
+                "ManageSieve authentication failed.")
+        };
+        var provider = new TrackingSieveServerConfigurationProvider
+        {
+            SaslMechanism = ManageSieveSaslMechanism.External,
+            ConnectionOptions = new ManageSieveClientOptions
+            {
+                Host = "sieve.example.com",
+                SecurityMode = ManageSieveSecurityMode.ImplicitTls,
+                ClientCertificate = certificate
+            }
+        };
+        TestApplication app = CreateApplication(client, provider);
+
+        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
+            () => app.Application.RunAsync(
+                CommandLineOptions.Parse(["list"]),
+                TestContext.Current.CancellationToken));
+
+        Assert.Equal(1, client.AuthenticationAttempts);
+        Assert.IsType<ManageSieveExternalAuthenticator>(client.Authenticator);
     }
 
     [Fact]
@@ -667,6 +739,19 @@ public sealed class ManageSieveCliApplicationTests
         return new TestApplication(application, rawOutput, textBuffer);
     }
 
+    private static X509Certificate2 CreateCertificate()
+    {
+        using var key = RSA.Create(2048);
+        var request = new CertificateRequest(
+            "CN=CLI test",
+            key,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+        return request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-1),
+            DateTimeOffset.UtcNow.AddMinutes(5));
+    }
+
     private sealed record TestApplication(
         ManageSieveCliApplication Application,
         MemoryStream RawOutput,
@@ -773,6 +858,8 @@ public sealed class ManageSieveCliApplicationTests
         public Exception? AuthenticationException { get; set; }
 
         public IManageSieveAuthenticator? Authenticator { get; private set; }
+
+        public bool CertificateWasUsableOnDispose { get; private set; }
 
         public bool SetActiveCalled { get; private set; }
 
@@ -914,6 +1001,14 @@ public sealed class ManageSieveCliApplicationTests
             CancellationToken cancellationToken = default) =>
             ValueTask.CompletedTask;
 
-        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+        public ValueTask DisposeAsync()
+        {
+            if (OptionsValue.ClientCertificate is { } certificate)
+            {
+                CertificateWasUsableOnDispose = certificate.GetCertHash().Length > 0;
+            }
+
+            return ValueTask.CompletedTask;
+        }
     }
 }

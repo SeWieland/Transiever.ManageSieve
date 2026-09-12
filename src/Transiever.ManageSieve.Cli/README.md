@@ -85,7 +85,7 @@ The port and security mode are optional.
 The default is port `4190` with required STARTTLS.
 `ImplicitTls` is also supported.
 
-Authentication uses `--sieve-sasl-mechanism auto|plain|scram-sha-256|scram-sha-256-plus|oauthbearer` or the
+Authentication uses `--sieve-sasl-mechanism auto|plain|scram-sha-256|scram-sha-256-plus|oauthbearer|external` or the
 `TRANSIEVER_SIEVE_SASL_MECHANISM` environment variable.
 The precedence is command-line option, environment variable, then the default
 `auto`.
@@ -130,3 +130,32 @@ Plaintext transport, a missing post-TLS `OAUTHBEARER` advertisement, and authent
 `auto` never selects `OAUTHBEARER`.
 Its order remains advertised, locally usable `SCRAM-SHA-256-PLUS`, then `SCRAM-SHA-256`, then `PLAIN`.
 Use `msieve capabilities` to inspect the server's advertised SASL mechanisms only; it performs no OAuth or OpenID Connect discovery and never requests a token.
+
+### EXTERNAL
+
+Use EXTERNAL when the service identifies callers through TLS client certificates, as specified by [RFC 4422](https://www.rfc-editor.org/rfc/rfc4422#appendix-A) and the [RFC 5804 authentication exchange](https://www.rfc-editor.org/rfc/rfc5804#section-2.1).
+Select it explicitly and supply an existing PKCS#12/PFX file:
+
+```bash
+msieve list --sieve-host sieve.example.com --sieve-sasl-mechanism external --sieve-client-certificate client.pfx
+```
+
+`--sieve-client-certificate` overrides `TRANSIEVER_SIEVE_CLIENT_CERTIFICATE`.
+The certificate password comes from `TRANSIEVER_SIEVE_CLIENT_CERTIFICATE_PASSWORD`, or a hidden interactive prompt when that variable is absent.
+No certificate-password command-line option exists.
+On Windows, the CLI uses a temporary current-user key container for Schannel and .NET removes it when the certificate is disposed.
+On other operating systems, the private key stays memory-only through ephemeral key storage.
+The CLI does not set `PersistKeySet`, `Exportable`, or `MachineKeySet`, and does not install the certificate in an OS store.
+It keeps the certificate alive for the command and disposes it after the client on handled completion and failure paths.
+Load errors contain fixed configuration text without file paths, passwords, certificate details, or inner cryptographic errors.
+Certificate creation, enrollment, renewal, OS-store import, and account mapping remain outside the CLI.
+
+Unlike password and bearer-token input, the certificate and its password must be loaded before connecting because the identity participates in the TLS handshake.
+After TLS, the server must advertise EXTERNAL, and the library requires evidence that a client certificate was actually presented through mutual TLS before authentication output.
+Normal server-certificate validation remains in force.
+EXTERNAL failures never retry or downgrade to another mechanism.
+
+The CLI always sends an empty authorization identity, asking the server to use the identity associated with the certificate.
+Custom authorization identities are available only through the library API.
+`auto` never selects EXTERNAL or loads a certificate; its password-family order remains unchanged.
+`msieve capabilities` also does not load a certificate: it reports advertisement only, which does not prove certificate presentation, acceptance, or account authorization.
