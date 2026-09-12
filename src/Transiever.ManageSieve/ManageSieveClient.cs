@@ -576,10 +576,21 @@ public sealed class ManageSieveClient : IManageSieveClient
         }
 
         _disposed = true;
-        await ResetTransportAsync().ConfigureAwait(false);
-        _commandLock.Dispose();
-        State = ManageSieveSessionState.Closed;
-        Capabilities = null;
+        try
+        {
+            await ResetTransportAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            throw new ManageSieveConnectionException(
+                "ManageSieve client disposal failed.");
+        }
+        finally
+        {
+            _commandLock.Dispose();
+            State = ManageSieveSessionState.Closed;
+            Capabilities = null;
+        }
     }
 
     private ValueTask<ManageSieveCommandResult> ExecuteResultAsync(

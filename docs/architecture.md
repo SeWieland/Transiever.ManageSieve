@@ -71,6 +71,8 @@ Do not build it around ad hoc string splitting.
 Use standard .NET async naming with a final optional `CancellationToken`.
 Prefer immutable result models and read-only collections.
 Use `IAsyncDisposable` where shutdown requires asynchronous I/O.
+`DisposeAsync` is terminal even when transport cleanup fails: it leaves the client in `Closed`, clears capabilities, and reports a fixed `ManageSieveConnectionException` with message `ManageSieve client disposal failed.` and no inner exception.
+Repeated disposal is a no-op, and a disposed client cannot be reused.
 
 Command methods return structured values only when the server has meaningful data.
 `NO` and unexpected `BYE` responses use typed exceptions carrying response codes.
