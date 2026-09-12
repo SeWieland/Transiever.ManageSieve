@@ -13,8 +13,8 @@ The reusable internal `SaslConformanceHarness` supplies scripted fragmented stre
 It records exact wire bytes and non-secret buffer observations without contacting a server or requiring credentials.
 Conformance cases use unique secret sentinels, and the harness is reusable by future SASL mechanisms.
 
-`Transiever.ManageSieve.IntegrationTest` uses Testcontainers and a pinned Dovecot/Pigeonhole image.
-It skips when Docker is unavailable.
+`Transiever.ManageSieve.IntegrationTest` contains loopback TLS tests and Testcontainers tests using a pinned Dovecot/Pigeonhole image.
+Only the Docker-backed cases skip when Docker is unavailable.
 The fixture waits for the mapped host port.
 It pins the image's bundled test certificate through the internal certificate-validation seam.
 It covers the ManageSieve commands supported by that Dovecot/Pigeonhole build.
@@ -47,6 +47,16 @@ Run only the PLUS conformance cases with:
 ```bash
 dotnet test Transiever.ManageSieve.slnx --no-build --filter "FullyQualifiedName~Plus"
 ```
+
+## EXTERNAL Conformance
+
+EXTERNAL unit coverage uses scripted transport evidence to assert exact empty, ASCII, and Unicode frames, strict UTF-8 and identity bounds, configured/private/presented certificate gates, lifecycle cleanup, safe failures, and absence of private material from diagnostics.
+Ordinary non-Docker loopback tests generate disposable server and client identities at runtime.
+Their keys remain memory-only outside Windows; Windows Schannel uses uniquely named, non-exportable temporary current-user CNG keys that the fixtures delete and verify after TLS and certificate disposal.
+The server requires mutual TLS and verifies the exact client certificate hash; success proves physical presentation and that client disposal preserves the caller-owned certificate.
+A separate missing-certificate case proves safe connection failure without authentication output.
+Both cases run on Windows and Ubuntu, use bounded operations and observed cleanup, and never export certificates or private keys to files or install certificates into a store.
+They require no provider account, live credentials, reusable identity artifact, or Dovecot changes.
 
 ## Unit Coverage Priorities
 
