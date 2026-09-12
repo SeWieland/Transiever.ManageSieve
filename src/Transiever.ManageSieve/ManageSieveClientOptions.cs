@@ -1,3 +1,5 @@
+using System.Security.Cryptography.X509Certificates;
+
 namespace Transiever.ManageSieve;
 
 /// <summary>
@@ -25,6 +27,15 @@ public sealed record ManageSieveClientOptions
     /// </summary>
     public ManageSieveSecurityMode SecurityMode { get; init; } =
         ManageSieveSecurityMode.StartTlsRequired;
+
+    /// <summary>
+    /// Gets the caller-owned certificate offered as the TLS client identity.
+    /// </summary>
+    /// <remarks>
+    /// The caller must keep the certificate usable for the client's lifetime and dispose it afterward.
+    /// This setting does not change server-certificate validation.
+    /// </remarks>
+    public X509Certificate2? ClientCertificate { get; init; }
 
     /// <summary>
     /// Gets the maximum time allowed for the initial TCP connection.

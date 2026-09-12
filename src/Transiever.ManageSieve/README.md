@@ -32,6 +32,7 @@ For a human-oriented overview and tool picker, see the [Transiever ManageSieve g
 * `ManageSieveScramSha256Authenticator` provides the protected `SCRAM-SHA-256` password exchange.
 * `ManageSieveScramSha256PlusAuthenticator` provides protected, channel-bound `SCRAM-SHA-256-PLUS`.
 * `ManageSieveOAuthBearerAuthenticator` provides protected `OAUTHBEARER` with a caller-supplied access token.
+* `ManageSieveExternalAuthenticator` provides `EXTERNAL` after mutual TLS with a caller-owned client certificate.
 * Typed exceptions distinguish connection, authentication, protocol, and command failures.
 
 See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md) for the SASL lifecycle, security, memory ownership, diagnostics, and failure contract.
@@ -85,6 +86,30 @@ On a server error challenge, `ServerError` exposes the safe `ManageSieveOAuthBea
 The `openid-configuration` value is diagnostic data only: it is an HTTPS absolute URL without userinfo or a fragment and is never fetched or cached.
 The client accepts direct success only through `CompleteAsync(null)`.
 See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md#oauthbearer) for the exact error bounds, diagnostics, and cleanup contract.
+
+### EXTERNAL
+
+Use `EXTERNAL` when the service authenticates callers through TLS client certificates.
+Supply an already-loaded `X509Certificate2` with its private key before connecting:
+
+```csharp
+ManageSieveClientOptions options = new()
+{
+    Host = "sieve.example.com",
+    ClientCertificate = clientCertificate
+};
+
+await using IManageSieveClient client = new ManageSieveClientFactory().CreateClient(options);
+await client.ConnectAsync();
+await client.StartTlsAsync();
+await client.AuthenticateAsync(new ManageSieveExternalAuthenticator());
+```
+
+The caller owns `clientCertificate` and must keep it alive until after client disposal.
+The option controls local TLS identity; it does not change normal server-certificate validation.
+EXTERNAL requires an advertised mechanism and actual mutual-TLS certificate presentation.
+The default empty authorization identity requests the identity associated with the certificate; an optional custom identity is a server-authorized request, not a local account mapping.
+See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md#external) for UTF-8 limits, exact framing, ownership, and failure behavior.
 
 ## Script operations
 

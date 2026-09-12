@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 
 namespace Transiever.ManageSieve.UnitTest;
 
@@ -11,6 +12,10 @@ internal sealed class ScriptedManageSieveTransport :
     private readonly byte[]? tlsServerEndPointBinding;
     private readonly Exception? tlsServerEndPointBindingException;
     private readonly List<string>? tlsServerEndPointBindingTrace;
+    private readonly Exception? upgradeTlsException;
+    private readonly bool blockTlsUpgrade;
+    private readonly TaskCompletionSource tlsUpgradeStarted = new(
+        TaskCreationOptions.RunContinuationsAsynchronously);
 
     public ScriptedManageSieveTransport(
         ReadOnlyMemory<byte> input,
@@ -21,7 +26,10 @@ internal sealed class ScriptedManageSieveTransport :
         Exception? disposeException = null,
         ReadOnlyMemory<byte>? tlsServerEndPointBinding = null,
         Exception? tlsServerEndPointBindingException = null,
-        List<string>? tlsServerEndPointBindingTrace = null)
+        List<string>? tlsServerEndPointBindingTrace = null,
+        bool hasClientCertificate = false,
+        Exception? upgradeTlsException = null,
+        bool blockTlsUpgrade = false)
     {
         stream = new ScriptedStream(
             input,
@@ -32,11 +40,16 @@ internal sealed class ScriptedManageSieveTransport :
         this.tlsServerEndPointBinding = tlsServerEndPointBinding?.ToArray();
         this.tlsServerEndPointBindingException = tlsServerEndPointBindingException;
         this.tlsServerEndPointBindingTrace = tlsServerEndPointBindingTrace;
+        HasClientCertificate = hasClientCertificate;
+        this.upgradeTlsException = upgradeTlsException;
+        this.blockTlsUpgrade = blockTlsUpgrade;
     }
 
     public Stream Stream => stream;
 
     public bool IsSecure { get; private set; }
+
+    public bool HasClientCertificate { get; }
 
     public bool IsDisposed { get; private set; }
 
@@ -70,17 +83,29 @@ internal sealed class ScriptedManageSieveTransport :
 
     public Task WaitForWriteAsync() => stream.WaitForWriteAsync();
 
+    public Task WaitForTlsUpgradeAsync() => tlsUpgradeStarted.Task;
+
     public IManageSieveTransport Create(ManageSieveClientOptions options) => this;
 
     public ValueTask ConnectAsync(CancellationToken cancellationToken) =>
         ValueTask.CompletedTask;
 
-    public ValueTask UpgradeTlsAsync(
+    public async ValueTask UpgradeTlsAsync(
         string targetHost,
         CancellationToken cancellationToken)
     {
+        tlsUpgradeStarted.TrySetResult();
+        if (blockTlsUpgrade)
+        {
+            await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+        }
+
+        if (upgradeTlsException is not null)
+        {
+            throw upgradeTlsException;
+        }
+
         IsSecure = true;
-        return ValueTask.CompletedTask;
     }
 
     public ValueTask DisposeAsync()
@@ -403,7 +428,9 @@ internal sealed class SaslConformanceHarness : IAsyncDisposable
         Exception? disposeException = null,
         ReadOnlyMemory<byte>? tlsServerEndPointBinding = null,
         Exception? tlsServerEndPointBindingException = null,
-        List<string>? tlsServerEndPointBindingTrace = null)
+        List<string>? tlsServerEndPointBindingTrace = null,
+        bool hasClientCertificate = false,
+        X509Certificate2? clientCertificate = null)
     {
         TimeSpan timeout = operationTimeout ?? TimeSpan.FromSeconds(30);
         var transport = new ScriptedManageSieveTransport(
@@ -415,13 +442,15 @@ internal sealed class SaslConformanceHarness : IAsyncDisposable
             disposeException,
             tlsServerEndPointBinding,
             tlsServerEndPointBindingException,
-            tlsServerEndPointBindingTrace);
+            tlsServerEndPointBindingTrace,
+            hasClientCertificate);
         var client = new ManageSieveClient(
             new ManageSieveClientOptions
             {
                 Host = "sieve.example.com",
                 Port = 4190,
                 SecurityMode = securityMode,
+                ClientCertificate = clientCertificate,
                 ConnectTimeout = timeout,
                 OperationTimeout = timeout
             },
