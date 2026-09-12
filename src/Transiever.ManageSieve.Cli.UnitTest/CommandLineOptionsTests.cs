@@ -55,6 +55,7 @@ public sealed class CommandLineOptionsTests
     [InlineData("scram-sha-256", ManageSieveSaslMechanism.ScramSha256)]
     [InlineData("scram-sha-256-plus", ManageSieveSaslMechanism.ScramSha256Plus)]
     [InlineData("oauthbearer", ManageSieveSaslMechanism.OAuthBearer)]
+    [InlineData("external", ManageSieveSaslMechanism.External)]
     public void ParseReadsSaslMechanism(string value, ManageSieveSaslMechanism expected)
     {
         CommandLineOptions options = CommandLineOptions.Parse(
@@ -80,6 +81,17 @@ public sealed class CommandLineOptionsTests
             ["list", "--sieve-oauth-token-stdin"]);
 
         Assert.True(options.SieveOAuthTokenStdin);
+    }
+
+    [Fact]
+    public void ParseReadsClientCertificatePathWithoutAcceptingPassword()
+    {
+        CommandLineOptions options = CommandLineOptions.Parse(
+            ["list", "--sieve-sasl-mechanism", "external", "--sieve-client-certificate", "client.pfx"]);
+
+        Assert.Equal("client.pfx", options.SieveClientCertificate);
+        Assert.Throws<ArgumentException>(() => CommandLineOptions.Parse(
+            ["list", "--sieve-client-certificate-password", "secret"]));
     }
 
     [Fact]

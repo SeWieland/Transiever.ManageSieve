@@ -101,13 +101,35 @@ public sealed class ManageSieveClient : IManageSieveClient
             _transport = _transportFactory.Create(Options);
             await _transport.ConnectAsync(timeout.Token).ConfigureAwait(false);
 
+            ManageSieveResponse greeting;
             if (Options.SecurityMode == ManageSieveSecurityMode.ImplicitTls)
             {
-                await _transport.UpgradeTlsAsync(Options.Host, timeout.Token).ConfigureAwait(false);
+                try
+                {
+                    await _transport.UpgradeTlsAsync(Options.Host, timeout.Token).ConfigureAwait(false);
+                    _reader = new ManageSieveProtocolReader(_transport.Stream);
+                    greeting = await _reader.ReadResponseAsync(timeout.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (ManageSieveProtocolException)
+                {
+                    throw;
+                }
+                catch
+                {
+                    await ResetTransportPreservingFailureAsync().ConfigureAwait(false);
+                    throw new ManageSieveConnectionException("TLS authentication failed.");
+                }
+            }
+            else
+            {
+                _reader = new ManageSieveProtocolReader(_transport.Stream);
+                greeting = await _reader.ReadResponseAsync(timeout.Token).ConfigureAwait(false);
             }
 
-            _reader = new ManageSieveProtocolReader(_transport.Stream);
-            ManageSieveResponse greeting = await _reader.ReadResponseAsync(timeout.Token).ConfigureAwait(false);
             ThrowForFailure("CONNECT", greeting);
 
             Capabilities = ManageSieveProtocolMapper.MapCapabilities(greeting.Data);
@@ -115,9 +137,15 @@ public sealed class ManageSieveClient : IManageSieveClient
                 ? ManageSieveSessionState.Secured
                 : ManageSieveSessionState.Connected;
         }
-        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            await ResetTransportAsync().ConfigureAwait(false);
+            await ResetTransportPreservingFailureAsync().ConfigureAwait(false);
+            cancellationToken.ThrowIfCancellationRequested();
+            throw;
+        }
+        catch (OperationCanceledException)
+        {
+            await ResetTransportPreservingFailureAsync().ConfigureAwait(false);
             throw new ManageSieveConnectionException(
                 $"Connecting to {Options.Host}:{Options.Port} timed out.");
         }
@@ -176,13 +204,47 @@ public sealed class ManageSieveClient : IManageSieveClient
             ManageSieveResponse response = await ReadAsync(timeout.Token).ConfigureAwait(false);
             ThrowForFailure("STARTTLS", response);
 
-            await _transport!.UpgradeTlsAsync(Options.Host, timeout.Token).ConfigureAwait(false);
-            _reader = new ManageSieveProtocolReader(_transport.Stream);
-            State = ManageSieveSessionState.Secured;
+            ManageSieveResponse capabilities;
+            try
+            {
+                await _transport!.UpgradeTlsAsync(Options.Host, timeout.Token).ConfigureAwait(false);
+                _reader = new ManageSieveProtocolReader(_transport.Stream);
+                capabilities = await ReadAsync(timeout.Token).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+            {
+                await ResetTransportPreservingFailureAsync().ConfigureAwait(false);
+                cancellationToken.ThrowIfCancellationRequested();
+                throw;
+            }
+            catch (OperationCanceledException)
+            {
+                await ResetTransportPreservingFailureAsync().ConfigureAwait(false);
+                throw new TimeoutException(
+                    $"ManageSieve command STARTTLS exceeded {Options.OperationTimeout}.");
+            }
+            catch (ManageSieveProtocolException)
+            {
+                await ResetTransportPreservingFailureAsync().ConfigureAwait(false);
+                throw;
+            }
+            catch
+            {
+                await ResetTransportPreservingFailureAsync().ConfigureAwait(false);
+                throw new ManageSieveConnectionException("TLS authentication failed.");
+            }
 
-            ManageSieveResponse capabilities = await ReadAsync(timeout.Token).ConfigureAwait(false);
-            ThrowForFailure("STARTTLS", capabilities);
-            Capabilities = ManageSieveProtocolMapper.MapCapabilities(capabilities.Data);
+            try
+            {
+                ThrowForFailure("STARTTLS", capabilities);
+                Capabilities = ManageSieveProtocolMapper.MapCapabilities(capabilities.Data);
+                State = ManageSieveSessionState.Secured;
+            }
+            catch
+            {
+                await ResetTransportPreservingFailureAsync().ConfigureAwait(false);
+                throw;
+            }
         }
         finally
         {
@@ -211,6 +273,15 @@ public sealed class ManageSieveClient : IManageSieveClient
         {
             throw new ManageSieveAuthenticationException(
                 "The server did not advertise the selected SASL mechanism.");
+        }
+
+        if (authenticator.RequiresClientCertificate &&
+            (!HasUsableClientCertificate() ||
+             _transport?.IsSecure != true ||
+             !_transport.HasClientCertificate))
+        {
+            throw new ManageSieveAuthenticationException(
+                "A verified TLS client certificate is required.");
         }
 
         await _commandLock.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -635,6 +706,34 @@ public sealed class ManageSieveClient : IManageSieveClient
         if (transportToDispose is not null)
         {
             await transportToDispose.DisposeAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask ResetTransportPreservingFailureAsync()
+    {
+        try
+        {
+            await ResetTransportAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // Preserve the primary failure after ResetTransportAsync has cleared session state.
+        }
+    }
+
+    private bool HasUsableClientCertificate()
+    {
+        try
+        {
+            return Options.ClientCertificate?.HasPrivateKey == true;
+        }
+        catch (CryptographicException)
+        {
+            return false;
+        }
+        catch (ObjectDisposedException)
+        {
+            return false;
         }
     }
 

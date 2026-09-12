@@ -1,3 +1,4 @@
+using System.Security.Cryptography.X509Certificates;
 using Transiever.ManageSieve;
 
 namespace Transiever.ManageSieve.Cli;
@@ -73,8 +74,9 @@ public sealed class ManageSieveCliApplication
         CommandLineOptions options,
         CancellationToken cancellationToken)
     {
-        await using IManageSieveClient client =
+        await using CliClientSession session =
             await ConnectAuthenticatedAsync(options, cancellationToken);
+        IManageSieveClient client = session.Client;
         IReadOnlyList<ManageSieveScriptInfo> scripts =
             await client.ListScriptsAsync(cancellationToken);
         ConsolePresentation.PrintScripts(_textOutput, scripts);
@@ -84,8 +86,9 @@ public sealed class ManageSieveCliApplication
         CommandLineOptions options,
         CancellationToken cancellationToken)
     {
-        await using IManageSieveClient client =
+        await using CliClientSession session =
             await ConnectAuthenticatedAsync(options, cancellationToken);
+        IManageSieveClient client = session.Client;
         ManageSieveScript script =
             await client.GetScriptAsync(options.ScriptName!, cancellationToken);
 
@@ -109,8 +112,9 @@ public sealed class ManageSieveCliApplication
         byte[] content = await File.ReadAllBytesAsync(
             options.File!,
             cancellationToken);
-        await using IManageSieveClient client =
+        await using CliClientSession session =
             await ConnectAuthenticatedAsync(options, cancellationToken);
+        IManageSieveClient client = session.Client;
         ManageSieveCommandResult result =
             await client.CheckScriptAsync(content, cancellationToken);
         ConsolePresentation.PrintResult(_textOutput, "Script is valid.", result);
@@ -123,8 +127,9 @@ public sealed class ManageSieveCliApplication
         byte[] content = await File.ReadAllBytesAsync(
             options.File!,
             cancellationToken);
-        await using IManageSieveClient client =
+        await using CliClientSession session =
             await ConnectAuthenticatedAsync(options, cancellationToken);
+        IManageSieveClient client = session.Client;
         ManageSieveCommandResult result =
             await client.PutScriptAsync(
                 options.ScriptName!,
@@ -152,8 +157,9 @@ public sealed class ManageSieveCliApplication
         CommandLineOptions options,
         CancellationToken cancellationToken)
     {
-        await using IManageSieveClient client =
+        await using CliClientSession session =
             await ConnectAuthenticatedAsync(options, cancellationToken);
+        IManageSieveClient client = session.Client;
         ManageSieveCommandResult result =
             await client.SetActiveScriptAsync(
                 options.ScriptName,
@@ -168,8 +174,9 @@ public sealed class ManageSieveCliApplication
         CommandLineOptions options,
         CancellationToken cancellationToken)
     {
-        await using IManageSieveClient client =
+        await using CliClientSession session =
             await ConnectAuthenticatedAsync(options, cancellationToken);
+        IManageSieveClient client = session.Client;
         ManageSieveCommandResult result =
             await client.SetActiveScriptAsync(null, cancellationToken);
         ConsolePresentation.PrintResult(
@@ -182,8 +189,9 @@ public sealed class ManageSieveCliApplication
         CommandLineOptions options,
         CancellationToken cancellationToken)
     {
-        await using IManageSieveClient client =
+        await using CliClientSession session =
             await ConnectAuthenticatedAsync(options, cancellationToken);
+        IManageSieveClient client = session.Client;
         ManageSieveCommandResult result =
             await client.DeleteScriptAsync(
                 options.ScriptName!,
@@ -194,21 +202,33 @@ public sealed class ManageSieveCliApplication
             result);
     }
 
-    private async Task<IManageSieveClient> ConnectAuthenticatedAsync(
+    private async Task<CliClientSession> ConnectAuthenticatedAsync(
         CommandLineOptions options,
         CancellationToken cancellationToken)
     {
-        // Credentials are requested only after TLS and capability validation.
+        // Certificates are loaded before TLS; passwords and tokens wait for TLS and capabilities.
+        ManageSieveSaslMechanism requestedMechanism = _configurationProvider.GetSaslMechanism(options);
         ManageSieveClientOptions connectionOptions =
-            _configurationProvider.GetConnectionOptions(options);
+            _configurationProvider.GetAuthenticatedConnectionOptions(
+                options,
+                requestedMechanism);
         if (connectionOptions.SecurityMode == ManageSieveSecurityMode.PlainText)
         {
+            connectionOptions.ClientCertificate?.Dispose();
             throw new InvalidOperationException(
                 "msieve does not send credentials over a plaintext ManageSieve connection.");
         }
 
-        ManageSieveSaslMechanism requestedMechanism = _configurationProvider.GetSaslMechanism(options);
-        IManageSieveClient client = await ConnectAsync(connectionOptions, cancellationToken);
+        IManageSieveClient client;
+        try
+        {
+            client = await ConnectAsync(connectionOptions, cancellationToken);
+        }
+        catch
+        {
+            connectionOptions.ClientCertificate?.Dispose();
+            throw;
+        }
 
         try
         {
@@ -220,7 +240,11 @@ public sealed class ManageSieveCliApplication
                 client);
 
             IManageSieveAuthenticator authenticator;
-            if (selectedMechanism == "OAUTHBEARER")
+            if (selectedMechanism == "EXTERNAL")
+            {
+                authenticator = new ManageSieveExternalAuthenticator();
+            }
+            else if (selectedMechanism == "OAUTHBEARER")
             {
                 string token = _configurationProvider.GetOAuthBearerToken(options);
                 authenticator = new ManageSieveOAuthBearerAuthenticator(
@@ -247,11 +271,19 @@ public sealed class ManageSieveCliApplication
             }
 
             await client.AuthenticateAsync(authenticator, cancellationToken);
-            return client;
+            return new CliClientSession(client, connectionOptions.ClientCertificate);
         }
         catch
         {
-            await client.DisposeAsync();
+            try
+            {
+                await client.DisposeAsync();
+            }
+            finally
+            {
+                connectionOptions.ClientCertificate?.Dispose();
+            }
+
             throw;
         }
     }
@@ -289,6 +321,7 @@ public sealed class ManageSieveCliApplication
             ManageSieveSaslMechanism.ScramSha256 => "SCRAM-SHA-256",
             ManageSieveSaslMechanism.ScramSha256Plus => "SCRAM-SHA-256-PLUS",
             ManageSieveSaslMechanism.OAuthBearer => "OAUTHBEARER",
+            ManageSieveSaslMechanism.External => "EXTERNAL",
             _ => throw new ManageSieveAuthenticationException(
                 $"Unknown Sieve SASL mechanism: {requested}.")
         };
@@ -327,6 +360,25 @@ public sealed class ManageSieveCliApplication
         {
             await client.DisposeAsync();
             throw;
+        }
+    }
+
+    private sealed class CliClientSession(
+        IManageSieveClient client,
+        X509Certificate2? certificate) : IAsyncDisposable
+    {
+        public IManageSieveClient Client { get; } = client;
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                await Client.DisposeAsync();
+            }
+            finally
+            {
+                certificate?.Dispose();
+            }
         }
     }
 }

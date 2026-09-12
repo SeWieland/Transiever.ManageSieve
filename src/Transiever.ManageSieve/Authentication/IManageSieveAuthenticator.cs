@@ -18,6 +18,11 @@ public interface IManageSieveAuthenticator
     bool AllowsUnprotectedConnection => false;
 
     /// <summary>
+    /// Gets a value indicating whether the mechanism requires a verified TLS client identity.
+    /// </summary>
+    bool RequiresClientCertificate => false;
+
+    /// <summary>
     /// Returns the initial client response, if the mechanism uses one.
     /// </summary>
     /// <remarks>

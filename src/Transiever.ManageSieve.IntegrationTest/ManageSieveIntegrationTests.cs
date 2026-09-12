@@ -108,6 +108,21 @@ public sealed class ManageSieveIntegrationTests(DovecotFixture fixture)
     }
 }
 
+public sealed class DockerFactAttributeTests
+{
+    [Theory]
+    [InlineData("linux", true)]
+    [InlineData("LINUX\r\n", true)]
+    [InlineData("windows", false)]
+    [InlineData("", false)]
+    public void SupportsOnlyLinuxDaemon(
+        string daemonOperatingSystem,
+        bool expected) =>
+        Assert.Equal(
+            expected,
+            DockerFactAttribute.SupportsLinuxContainers(daemonOperatingSystem));
+}
+
 internal sealed class DockerFactAttribute : FactAttribute
 {
     public DockerFactAttribute(
@@ -121,7 +136,7 @@ internal sealed class DockerFactAttribute : FactAttribute
                 new ProcessStartInfo
                 {
                     FileName = "docker",
-                    Arguments = "version --format {{.Server.Version}}",
+                    Arguments = "info --format {{.OSType}}",
                     CreateNoWindow = true,
                     RedirectStandardOutput = true,
                     RedirectStandardError = true,
@@ -132,6 +147,12 @@ internal sealed class DockerFactAttribute : FactAttribute
                 process.ExitCode != 0)
             {
                 Skip = "Docker-backed ManageSieve tests require a running Docker daemon.";
+                return;
+            }
+
+            if (!SupportsLinuxContainers(process.StandardOutput.ReadToEnd()))
+            {
+                Skip = "Docker-backed ManageSieve tests require a Docker daemon using Linux containers.";
             }
         }
         catch
@@ -139,4 +160,10 @@ internal sealed class DockerFactAttribute : FactAttribute
             Skip = "Docker-backed ManageSieve tests require the Docker CLI and a running daemon.";
         }
     }
+
+    internal static bool SupportsLinuxContainers(string daemonOperatingSystem) =>
+        string.Equals(
+            daemonOperatingSystem.Trim(),
+            "linux",
+            StringComparison.OrdinalIgnoreCase);
 }

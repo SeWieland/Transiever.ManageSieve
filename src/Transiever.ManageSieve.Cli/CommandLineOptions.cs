@@ -9,7 +9,8 @@ public enum ManageSieveSaslMechanism
     Plain,
     ScramSha256,
     ScramSha256Plus,
-    OAuthBearer
+    OAuthBearer,
+    External
 }
 
 public sealed class CommandLineOptions
@@ -31,6 +32,8 @@ public sealed class CommandLineOptions
     public string? SieveUserName { get; private init; }
 
     public string? SievePassword { get; private init; }
+
+    public string? SieveClientCertificate { get; private init; }
 
     public ManageSieveSecurityMode? SieveSecurity { get; private init; }
 
@@ -58,6 +61,7 @@ public sealed class CommandLineOptions
         int? sievePort = null;
         string? sieveUserName = null;
         string? sievePassword = null;
+        string? sieveClientCertificate = null;
         ManageSieveSecurityMode? sieveSecurity = null;
         ManageSieveSaslMechanism? sieveSaslMechanism = null;
         var sieveOAuthTokenStdin = false;
@@ -87,6 +91,9 @@ public sealed class CommandLineOptions
                     break;
                 case "--sieve-password":
                     sievePassword = ReadOptionValue(args, ref index, option);
+                    break;
+                case "--sieve-client-certificate":
+                    sieveClientCertificate = ReadOptionValue(args, ref index, option);
                     break;
                 case "--sieve-security-mode":
                     sieveSecurity = ParseSieveSecurity(
@@ -135,6 +142,7 @@ public sealed class CommandLineOptions
             SievePort = sievePort,
             SieveUserName = sieveUserName,
             SievePassword = sievePassword,
+            SieveClientCertificate = sieveClientCertificate,
             SieveSecurity = sieveSecurity,
             SieveSaslMechanism = sieveSaslMechanism,
             SieveOAuthTokenStdin = sieveOAuthTokenStdin
@@ -260,6 +268,7 @@ public sealed class CommandLineOptions
             "scram-sha-256" => ManageSieveSaslMechanism.ScramSha256,
             "scram-sha-256-plus" => ManageSieveSaslMechanism.ScramSha256Plus,
             "oauthbearer" => ManageSieveSaslMechanism.OAuthBearer,
+            "external" => ManageSieveSaslMechanism.External,
             _ => throw new ArgumentException(
                 $"Unknown Sieve SASL mechanism: {value}")
         };

@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using Transiever.ManageSieve;
 using Transiever.ManageSieve.Cli;
 
@@ -89,6 +91,176 @@ public sealed class SieveServerConfigurationProviderTests
         Assert.Equal(
             ManageSieveSaslMechanism.ScramSha256Plus,
             provider.GetSaslMechanism(CommandLineOptions.Parse(["list"])));
+    }
+
+    [Fact]
+    public void ExternalCertificateUsesOptionPathAndEnvironmentPassword()
+    {
+        string? loadedPath = null;
+        string? loadedPassword = null;
+        X509KeyStorageFlags loadedFlags = default;
+        using X509Certificate2 certificate = CreateCertificate();
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_HOST"] = "sieve.example.com",
+                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "external",
+                ["TRANSIEVER_SIEVE_CLIENT_CERTIFICATE"] = "environment.pfx",
+                ["TRANSIEVER_SIEVE_CLIENT_CERTIFICATE_PASSWORD"] = "environment-secret"
+            },
+            loadPkcs12: (path, password, flags) =>
+            {
+                loadedPath = path;
+                loadedPassword = password;
+                loadedFlags = flags;
+                return certificate;
+            });
+
+        ManageSieveClientOptions options = provider.GetAuthenticatedConnectionOptions(
+            CommandLineOptions.Parse(
+                ["list", "--sieve-client-certificate", "option.pfx"]),
+            ManageSieveSaslMechanism.External);
+
+        Assert.Same(certificate, options.ClientCertificate);
+        Assert.Equal("option.pfx", loadedPath);
+        Assert.Equal("environment-secret", loadedPassword);
+        Assert.Equal(
+            OperatingSystem.IsWindows()
+                ? X509KeyStorageFlags.UserKeySet
+                : X509KeyStorageFlags.EphemeralKeySet,
+            loadedFlags);
+        Assert.False(loadedFlags.HasFlag(X509KeyStorageFlags.PersistKeySet));
+        Assert.False(loadedFlags.HasFlag(X509KeyStorageFlags.Exportable));
+        Assert.False(loadedFlags.HasFlag(X509KeyStorageFlags.MachineKeySet));
+    }
+
+    [Fact]
+    public void ExternalCertificateUsesHiddenPromptWhenPasswordEnvironmentIsMissing()
+    {
+        var passwordReads = 0;
+        using X509Certificate2 certificate = CreateCertificate();
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_HOST"] = "sieve.example.com",
+                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "external",
+                ["TRANSIEVER_SIEVE_CLIENT_CERTIFICATE"] = "client.pfx"
+            },
+            readCertificatePassword: () =>
+            {
+                passwordReads++;
+                return "prompt-secret";
+            },
+            loadPkcs12: (_, password, _) =>
+            {
+                Assert.Equal("prompt-secret", password);
+                return certificate;
+            });
+
+        _ = provider.GetAuthenticatedConnectionOptions(
+            CommandLineOptions.Parse(["list"]),
+            ManageSieveSaslMechanism.External);
+
+        Assert.Equal(1, passwordReads);
+    }
+
+    [Fact]
+    public void CapabilitiesDoesNotLoadExternalCertificate()
+    {
+        var loadCount = 0;
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_HOST"] = "sieve.example.com",
+                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "external",
+                ["TRANSIEVER_SIEVE_CLIENT_CERTIFICATE"] = "client.pfx"
+            },
+            loadPkcs12: (_, _, _) =>
+            {
+                loadCount++;
+                return CreateCertificate();
+            });
+
+        ManageSieveClientOptions options = provider.GetConnectionOptions(
+            CommandLineOptions.Parse(["capabilities"]));
+
+        Assert.Null(options.ClientCertificate);
+        Assert.Equal(0, loadCount);
+    }
+
+    [Fact]
+    public void AutoDoesNotLoadConfiguredExternalCertificate()
+    {
+        var loadCount = 0;
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_HOST"] = "sieve.example.com",
+                ["TRANSIEVER_SIEVE_CLIENT_CERTIFICATE"] = "client.pfx"
+            },
+            loadPkcs12: (_, _, _) =>
+            {
+                loadCount++;
+                return CreateCertificate();
+            });
+
+        ManageSieveClientOptions options = provider.GetAuthenticatedConnectionOptions(
+            CommandLineOptions.Parse(["list"]),
+            ManageSieveSaslMechanism.Auto);
+
+        Assert.Null(options.ClientCertificate);
+        Assert.Equal(0, loadCount);
+    }
+
+    [Fact]
+    public void PlaintextExternalFailsBeforeCertificateLoading()
+    {
+        var loadCount = 0;
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_HOST"] = "sieve.example.com",
+                ["TRANSIEVER_SIEVE_SECURITY_MODE"] = "PlainText",
+                ["TRANSIEVER_SIEVE_CLIENT_CERTIFICATE"] = "client.pfx"
+            },
+            loadPkcs12: (_, _, _) =>
+            {
+                loadCount++;
+                return CreateCertificate();
+            });
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => provider.GetAuthenticatedConnectionOptions(
+                CommandLineOptions.Parse(["list"]),
+                ManageSieveSaslMechanism.External));
+
+        Assert.Contains("plaintext", exception.Message);
+        Assert.Equal(0, loadCount);
+    }
+
+    [Fact]
+    public void CertificateLoadFailureUsesFixedDiagnostic()
+    {
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_HOST"] = "sieve.example.com",
+                ["TRANSIEVER_SIEVE_CLIENT_CERTIFICATE_PASSWORD"] = "super-secret"
+            },
+            loadPkcs12: (path, password, _) =>
+                throw new CryptographicException($"bad {path} {password}"));
+
+        InvalidOperationException exception = Assert.Throws<InvalidOperationException>(
+            () => provider.GetAuthenticatedConnectionOptions(
+                CommandLineOptions.Parse(
+                    ["list", "--sieve-client-certificate", "private-client.pfx"]),
+                ManageSieveSaslMechanism.External));
+
+        Assert.Equal(
+            "The configured Sieve client certificate could not be loaded.",
+            exception.Message);
+        Assert.DoesNotContain("private-client.pfx", exception.Message);
+        Assert.DoesNotContain("super-secret", exception.Message);
     }
 
     [Fact]
@@ -302,7 +474,9 @@ public sealed class SieveServerConfigurationProviderTests
         IReadOnlyDictionary<string, string?> environment,
         bool inputRedirected = false,
         Func<string>? readOAuthToken = null,
-        Func<string?>? readLine = null) =>
+        Func<string?>? readLine = null,
+        Func<string>? readCertificatePassword = null,
+        Func<string, string?, X509KeyStorageFlags, X509Certificate2>? loadPkcs12 = null) =>
         new(
             name => environment.TryGetValue(name, out string? value)
                 ? value
@@ -310,5 +484,20 @@ public sealed class SieveServerConfigurationProviderTests
             () => inputRedirected,
             () => "prompted",
             readOAuthToken ?? (() => "oauth-token"),
-            readLine ?? (() => null));
+            readLine ?? (() => null),
+            readCertificatePassword,
+            loadPkcs12);
+
+    private static X509Certificate2 CreateCertificate()
+    {
+        using var key = RSA.Create(2048);
+        var request = new CertificateRequest(
+            "CN=CLI test",
+            key,
+            HashAlgorithmName.SHA256,
+            RSASignaturePadding.Pkcs1);
+        return request.CreateSelfSigned(
+            DateTimeOffset.UtcNow.AddMinutes(-1),
+            DateTimeOffset.UtcNow.AddMinutes(5));
+    }
 }

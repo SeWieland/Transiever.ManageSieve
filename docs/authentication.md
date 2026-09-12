@@ -17,6 +17,8 @@ This implementation uses the `tls-server-end-point` binding from [RFC 5929](http
 Both SCRAM mechanisms require protected transport; PLUS additionally requires a supported TLS 1.2 endpoint binding.
 `OAUTHBEARER` is for a caller that already has an access token and wants the server to validate it.
 It does not acquire or refresh a token, and it is not a replacement for provider-specific OAuth or OpenID Connect policy.
+`EXTERNAL` uses an identity established by a TLS client certificate, for services that map certificates to accounts.
+The SASL exchange asks the server to authorize that identity; advertising EXTERNAL does not prove that a certificate was presented or that the server will accept it.
 
 ## Before authentication
 
@@ -30,6 +32,9 @@ After `STARTTLS`, the capabilities read over the protected transport are authori
 `CanUseScramSha256Plus` is false before TLS, when PLUS is not advertised, for TLS 1.3, or when the endpoint binding is unavailable or unsupported.
 During `AuthenticateAsync`, the client rechecks the binding under the command lock, fetches it immediately before `GetInitialResponseAsync`, and clears the attempt-owned bytes after the exchange; it does not cache a binding beyond the attempt.
 Failed preconditions produce no authenticator callback and no authentication wire output.
+Authenticators with `RequiresClientCertificate` set to `true` additionally require a configured certificate with a usable private key and negotiated mutual TLS with a selected local certificate.
+This capability defaults to `false` for existing authenticators.
+These checks run before callbacks, authentication writes, and acquisition of the command lock.
 
 ## SCRAM-SHA-256
 
@@ -117,6 +122,45 @@ Any non-null completion data, a repeated callback, or a malformed error response
 The caller supplies the token in memory.
 This library does not acquire, refresh, revoke, store, persist, discover, launch a browser, choose scopes, or implement provider policy.
 It does not make HTTP requests as part of OAUTHBEARER authentication.
+
+## EXTERNAL
+
+`ManageSieveExternalAuthenticator(authorizationIdentity: null)` implements [RFC 4422 EXTERNAL](https://www.rfc-editor.org/rfc/rfc4422#appendix-A) over protected transport.
+Set `ManageSieveClientOptions.ClientCertificate` before connecting so the certificate can participate in the TLS handshake.
+This single caller-owned `X509Certificate2` configures local identity only; normal platform validation of the server certificate remains unchanged.
+Keep the certificate undisposed for the full client lifetime and dispose it after the client.
+The library never disposes or mutates it and does not acquire, enroll, renew, import, or store certificates.
+
+The client requires both a configured certificate with a private key and transport evidence of completed mutual TLS with a non-null selected local certificate.
+A missing, disposed, public-only, or unpresented identity fails with `A verified TLS client certificate is required.` before any authenticator callback or authentication output.
+The synchronized session and its capabilities are preserved.
+A TLS authentication failure instead clears capabilities, disconnects, and raises `ManageSieveConnectionException` with `TLS authentication failed.` and no inner cryptographic exception.
+This generic failure does not distinguish client-certificate selection from server-certificate validation failures.
+
+An omitted or empty authorization identity asks the server to use the identity associated with the TLS credentials.
+A non-empty identity asks to act as that identity; the server owns authorization and certificate-to-account mapping.
+The identity is encoded as strict UTF-8 without normalization, excludes NUL and invalid UTF-16, and permits at most 1,024 UTF-8 octets, including the boundary.
+Constructor failures never include the identity or an inner encoding exception.
+
+The initial response is always present, including for the empty identity.
+The [RFC 5804 AUTHENTICATE framing](https://www.rfc-editor.org/rfc/rfc5804#section-2.1) Base64-encodes the UTF-8 bytes:
+
+```text
+AUTHENTICATE "EXTERNAL" ""\r\n
+AUTHENTICATE "EXTERNAL" "YWxpY2VAZXhhbXBsZS5jb20="\r\n
+AUTHENTICATE "EXTERNAL" "SsO2cmc="\r\n
+```
+
+These represent the empty identity, `alice@example.com`, and `Jörg`; `\r\n` denotes the command terminator.
+EXTERNAL accepts no challenges or server completion data, including empty `OK (SASL ...)` data.
+Only `CompleteAsync(null)` completes the initial response successfully.
+Duplicate initial calls and callbacks after completion or abort fail through the fixed lifecycle guard.
+Completion and abort clear the retained mutable response bytes; immutable identities and framework, OS, transport, and private-key storage are outside the erasure guarantee.
+
+Server `NO` preserves the secured session with an atom-only authentication error.
+Unexpected challenges or completion data, `BYE`, and cancellation or timeout after transmission disconnect under the shared exchange rules below.
+Diagnostics never include authorization identities, their Base64 form, certificate subjects or issuers, passwords, private keys, or raw authentication material.
+The [CLI guide](../src/Transiever.ManageSieve.Cli/README.md#external) describes explicit PKCS#12 loading with an empty authorization identity.
 
 ## Exchange lifecycle
 

@@ -17,6 +17,8 @@ internal interface IManageSieveTransport : IAsyncDisposable
 
     bool IsSecure { get; }
 
+    bool HasClientCertificate { get; }
+
     bool TryGetTlsServerEndPointBinding(out byte[] binding);
 
     ValueTask ConnectAsync(CancellationToken cancellationToken);
@@ -46,6 +48,9 @@ internal sealed class TcpManageSieveTransport(
         _stream ?? throw new InvalidOperationException("The transport is not connected.");
 
     public bool IsSecure => _stream is SslStream;
+
+    public bool HasClientCertificate =>
+        _stream is SslStream { IsMutuallyAuthenticated: true, LocalCertificate: not null };
 
     public bool TryGetTlsServerEndPointBinding(out byte[] binding)
     {
@@ -140,13 +145,33 @@ internal sealed class TcpManageSieveTransport(
             Stream,
             leaveInnerStreamOpen: false,
             certificateValidationCallback);
-        await ssl.AuthenticateAsClientAsync(
-            new SslClientAuthenticationOptions
+        try
+        {
+            await ssl.AuthenticateAsClientAsync(
+                new SslClientAuthenticationOptions
+                {
+                    TargetHost = targetHost,
+                    EnabledSslProtocols = SslProtocols.None,
+                    ClientCertificates = options.ClientCertificate is null
+                        ? null
+                        : new X509CertificateCollection { options.ClientCertificate }
+                },
+                cancellationToken).ConfigureAwait(false);
+        }
+        catch
+        {
+            try
             {
-                TargetHost = targetHost,
-                EnabledSslProtocols = SslProtocols.None
-            },
-            cancellationToken).ConfigureAwait(false);
+                await ssl.DisposeAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // Preserve the original TLS failure for the client's fixed diagnostic boundary.
+            }
+
+            throw;
+        }
+
         _stream = ssl;
     }
 
