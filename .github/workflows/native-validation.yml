@@ -1,0 +1,57 @@
+name: Native SASL validation
+
+on:
+  push:
+    branches: [codex/validate-sasl-native]
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    name: Native validation (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+          - os: windows-latest
+            rid: win-x86
+          - os: ubuntu-latest
+            rid: linux-x64
+    env:
+      TRANSIEVER_LIVE_TESTS: 'false'
+      TRANSIEVER_LIVE_WRITES: 'false'
+    steps:
+      - uses: actions/checkout@v7
+      - name: Checkout SASL candidate
+        uses: actions/checkout@v7
+        with:
+          repository: SeWieland/Transiever.SaslClient
+          ref: 112734d57dc05c924c58b6223ebff76c2905eb34
+          path: .validation/sasl
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Pack candidate dependency
+        shell: pwsh
+        run: |
+          dotnet pack .validation/sasl/src/Transiever.SaslClient/Transiever.SaslClient.csproj --configuration Release --output .validation/packages -p:TreatWarningsAsErrors=true
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          dotnet nuget add source (Resolve-Path .validation/packages).Path --name sasl-candidate
+      - name: Install Linux native prerequisites
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang zlib1g-dev
+      - name: Build native asset
+        shell: bash
+        run: bash .github/scripts/build-release-assets.sh v0.1.0-sasl-validation "${{ matrix.rid }}"
+      - name: Smoke test native executable
+        shell: bash
+        run: |
+          executable="artifacts/publish/${{ matrix.rid }}/msieve"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then executable="$executable.exe"; fi
+          "$executable" --help
