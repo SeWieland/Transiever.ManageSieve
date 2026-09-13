@@ -8,6 +8,7 @@ Test policy lives in [testing](testing.md).
 ```text
 consumer application
     -> Transiever.ManageSieve
+        -> Transiever.SaslClient
         -> RFC 5804 ManageSieve server
 
 operator
@@ -83,10 +84,12 @@ Successful warnings remain available on `ManageSieveCommandResult`.
 `ManageSieveClient` validates transport policy and capabilities, coordinates the command lock and timeout, and applies the session transition.
 `ManageSieveAuthenticationExchange` owns one exchange's callback ordering, protocol details, and temporary buffers.
 `ManageSieveAuthenticationRecovery` reports whether the current session is reusable, must disconnect, was rejected synchronously, or completed.
+`Transiever.SaslClient` owns the protocol-neutral mechanism messages and proofs.
+`ManageSieveSaslMechanismAdapter` bridges its `ISaslMechanism` contract into the existing ManageSieve authentication flow.
 See the [authentication guide](authentication.md) for the lifecycle, security, memory ownership, diagnostics, and failure contract.
 
 Avoid unnecessary framework dependencies.
-The main library should use the .NET base class libraries unless a dependency has a clear, documented benefit.
+The main library uses the focused `Transiever.SaslClient` package for mechanisms and otherwise prefers the .NET base class libraries.
 
 ## Security Defaults
 

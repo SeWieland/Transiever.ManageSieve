@@ -3,7 +3,8 @@
 ## Project Boundary
 
 `Transiever.ManageSieve` is a cross-platform .NET protocol library for RFC 5804 ManageSieve with a tiny policy-neutral CLI.
-It owns streaming parsing, command serialization, TCP/TLS transport, SASL authentication, session-state validation, and structured command results.
+It owns streaming parsing, command serialization, TCP/TLS transport, SASL protocol integration, session-state validation, and structured command results.
+`Transiever.SaslClient` owns the reusable SASL mechanism implementations.
 
 It must not reference Outlook, SieveRuler rule models, provider-specific policy, or any mail-client stack outside ManageSieve.
 Consumers own reconciliation and deployment policy.
