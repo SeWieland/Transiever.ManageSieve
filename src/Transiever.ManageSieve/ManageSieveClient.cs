@@ -291,7 +291,8 @@ public sealed class ManageSieveClient : IManageSieveClient
             using CancellationTokenSource timeout = CreateTimeout(
                 Options.OperationTimeout,
                 cancellationToken);
-            if (authenticator is IManageSieveChannelBindingAuthenticator bindingAuthenticator)
+            if (authenticator is IManageSieveChannelBindingAuthenticator
+                { UsesChannelBinding: true } bindingAuthenticator)
             {
                 try
                 {

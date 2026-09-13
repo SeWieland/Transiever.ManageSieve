@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Text;
+using Transiever.SaslClient;
 using static Transiever.ManageSieve.UnitTest.SaslConformanceHarness;
 
 namespace Transiever.ManageSieve.UnitTest;
@@ -1364,11 +1365,11 @@ public sealed class ManageSieveAuthenticationTests
 
     private static ManageSieveScramSha256PlusAuthenticator
         CreateScramSha256PlusAuthenticator() =>
-        new(
+        new(new SaslScramSha256PlusAuthenticator(
             "user",
             "pencil",
             authorizationIdentity: null,
-            nonceFactory: () => ScramSha256PlusNonce);
+            nonceFactory: () => ScramSha256PlusNonce));
 
     private sealed class RecordingChannelBindingLifecycleAuthenticator(
         List<string>? trace = null) :

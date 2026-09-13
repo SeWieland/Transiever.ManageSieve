@@ -25,6 +25,7 @@ For a human-oriented overview and tool picker, see the [Transiever ManageSieve g
 * `IManageSieveClient` represents one stateful ManageSieve session.
 * `IManageSieveClientFactory` creates independently owned clients.
 * `IManageSieveAuthenticator` represents a SASL challenge/response mechanism.
+* `ManageSieveSaslMechanismAdapter` uses a `Transiever.SaslClient.ISaslMechanism` without changing the ManageSieve exchange API.
 * `ManageSieveClientOptions` configures endpoint, security mode, and timeouts.
 * `ManageSieveCapabilities` exposes standard capabilities and preserves unknown capability values.
 * `ManageSieveCommandResult` exposes server messages, response codes, and warnings.
@@ -38,6 +39,10 @@ For a human-oriented overview and tool picker, see the [Transiever ManageSieve g
 See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md) for the SASL lifecycle, security, memory ownership, diagnostics, and failure contract.
 
 See the [architecture guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/architecture.md) for protocol constraints and the [testing guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/testing.md) for test policy.
+
+The five built-in ManageSieve authenticators remain source-compatible wrappers around the independently usable mechanisms from `Transiever.SaslClient`.
+Applications that already construct those authenticators do not need to change.
+Applications with another `ISaslMechanism` implementation can pass it through `ManageSieveSaslMechanismAdapter`; the ManageSieve client still enforces advertised capabilities, protected transport, client-certificate evidence, and supported channel binding before sending authentication data.
 
 ### SCRAM-SHA-256 and SCRAM-SHA-256-PLUS
 

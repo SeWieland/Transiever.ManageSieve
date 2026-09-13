@@ -37,7 +37,7 @@ The client implements these ManageSieve concerns:
 
 * TCP and TLS transport.
 * Streaming response parsing.
-* SASL authentication.
+* SASL authentication through `Transiever.SaslClient`.
 * Session-state validation.
 * Timeouts.
 * The RFC 5804 command surface.
@@ -68,7 +68,7 @@ src/Transiever.ManageSieve.LiveTest/        Explicitly enabled live-provider tes
 * Stateful async client API for the RFC 5804 command surface.
 * Streaming parser for fragmented responses, quoted strings, response codes, and byte-counted literals.
 * TCP, STARTTLS, and implicit TLS transport with platform certificate validation.
-* SASL authentication abstraction with PLAIN, SCRAM-SHA-256, channel-bound SCRAM-SHA-256-PLUS, OAUTHBEARER, and certificate-backed EXTERNAL support.
+* ManageSieve integration for the PLAIN, SCRAM-SHA-256, channel-bound SCRAM-SHA-256-PLUS, OAUTHBEARER, and certificate-backed EXTERNAL mechanisms from `Transiever.SaslClient`.
 * `msieve` CLI commands for capabilities, list, get, check, put, activate, deactivate, and delete.
 * Deterministic unit tests plus optional Docker and live-provider coverage.
   Docker coverage uses a pinned Dovecot/Pigeonhole container and pins the container certificate through an internal test seam.
@@ -107,6 +107,7 @@ dotnet run --project src/Transiever.ManageSieve.Cli -- --help
 ```
 
 Testing details live in [docs/testing.md](docs/testing.md).
+Local builds use a sibling `SaslClient` checkout when present; standalone builds use the versioned `Transiever.SaslClient` NuGet package.
 
 ## AI usage
 

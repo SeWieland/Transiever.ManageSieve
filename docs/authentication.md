@@ -5,6 +5,9 @@ It describes the checks before an exchange, authenticator callbacks, session out
 The ManageSieve protocol is defined by [RFC 5804](https://www.rfc-editor.org/rfc/rfc5804),
 and its authentication exchange uses the [SASL framework](https://www.rfc-editor.org/rfc/rfc4422).
 
+The reusable mechanism implementations live in the `Transiever.SaslClient` package.
+The existing ManageSieve authenticator classes are compatibility wrappers, and `ManageSieveSaslMechanismAdapter` accepts any package `ISaslMechanism` while preserving the transport and session checks described here.
+
 ## Why choose a mechanism?
 
 SASL mechanisms define how a client proves its identity to the server.
@@ -45,7 +48,7 @@ Commas and equals signs in identities are escaped using the SCRAM `=2C` and `=3D
 Unicode and SASLprep are not supported.
 
 Production instances generate an 18-byte cryptographically random nonce and encode it with standard Base64.
-An internal-only nonce factory makes offline tests deterministic; it is not public API.
+The SASL package keeps its deterministic nonce factory internal for offline tests; it is not public API.
 
 The exchange sends a client-first message in the form `n,,n=<user>,r=<client-nonce>` or `n,a=<authzid>,n=<user>,r=<client-nonce>`.
 The first server challenge must contain ordered, unique `r=`, `s=`, and `i=` fields, followed only by syntactically valid optional extensions.
