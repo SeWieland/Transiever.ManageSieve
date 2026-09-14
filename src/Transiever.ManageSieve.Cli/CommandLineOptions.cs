@@ -31,9 +31,11 @@ public sealed class CommandLineOptions
 
     public string? SieveUserName { get; private init; }
 
-    public string? SievePassword { get; private init; }
+    public bool SievePasswordStdin { get; private init; }
 
     public string? SieveClientCertificate { get; private init; }
+
+    public bool SieveClientCertificatePasswordStdin { get; private init; }
 
     public ManageSieveSecurityMode? SieveSecurity { get; private init; }
 
@@ -60,10 +62,11 @@ public sealed class CommandLineOptions
         string? sieveHost = null;
         int? sievePort = null;
         string? sieveUserName = null;
-        string? sievePassword = null;
         string? sieveClientCertificate = null;
         ManageSieveSecurityMode? sieveSecurity = null;
         ManageSieveSaslMechanism? sieveSaslMechanism = null;
+        var sievePasswordStdin = false;
+        var sieveClientCertificatePasswordStdin = false;
         var sieveOAuthTokenStdin = false;
 
         while (index < args.Count)
@@ -90,10 +93,16 @@ public sealed class CommandLineOptions
                     sieveUserName = ReadOptionValue(args, ref index, option);
                     break;
                 case "--sieve-password":
-                    sievePassword = ReadOptionValue(args, ref index, option);
+                    throw new ArgumentException(
+                        "Passwords cannot be supplied through --sieve-password.");
+                case "--sieve-password-stdin":
+                    sievePasswordStdin = true;
                     break;
                 case "--sieve-client-certificate":
                     sieveClientCertificate = ReadOptionValue(args, ref index, option);
+                    break;
+                case "--sieve-client-certificate-password-stdin":
+                    sieveClientCertificatePasswordStdin = true;
                     break;
                 case "--sieve-security-mode":
                     sieveSecurity = ParseSieveSecurity(
@@ -110,6 +119,12 @@ public sealed class CommandLineOptions
                 case "--help":
                     return new CommandLineOptions { ShowHelp = true };
                 default:
+                    if (IsSecretOptionValue(option))
+                    {
+                        throw new ArgumentException(
+                            "Secret input cannot be supplied through an option value.");
+                    }
+
                     if (option.StartsWith("-", StringComparison.Ordinal))
                     {
                         throw new ArgumentException($"Unknown option: {option}");
@@ -141,10 +156,12 @@ public sealed class CommandLineOptions
             SieveHost = sieveHost,
             SievePort = sievePort,
             SieveUserName = sieveUserName,
-            SievePassword = sievePassword,
+            SievePasswordStdin = sievePasswordStdin,
             SieveClientCertificate = sieveClientCertificate,
             SieveSecurity = sieveSecurity,
             SieveSaslMechanism = sieveSaslMechanism,
+            SieveClientCertificatePasswordStdin =
+                sieveClientCertificatePasswordStdin,
             SieveOAuthTokenStdin = sieveOAuthTokenStdin
         };
     }
@@ -209,6 +226,20 @@ public sealed class CommandLineOptions
 
     private static bool IsHelp(string value) =>
         value is "-h" or "--help" or "help";
+
+    private static bool IsSecretOptionValue(string value) =>
+        value.StartsWith("--sieve-password=", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("--sieve-password-stdin=", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith(
+            "--sieve-client-certificate-password=",
+            StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith(
+            "--sieve-client-certificate-password-stdin=",
+            StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith("--sieve-oauth-token=", StringComparison.OrdinalIgnoreCase) ||
+        value.StartsWith(
+            "--sieve-oauth-token-stdin=",
+            StringComparison.OrdinalIgnoreCase);
 
     private static string ReadOptionValue(
         IReadOnlyList<string> args,

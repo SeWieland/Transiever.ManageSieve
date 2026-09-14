@@ -78,9 +78,9 @@ TRANSIEVER_SIEVE_SECURITY_MODE=StartTlsRequired
 TRANSIEVER_SIEVE_SASL_MECHANISM=auto
 ```
 
-Use `--sieve-host`, `--sieve-port`, `--sieve-username`, `--sieve-password`,
-`--sieve-security-mode`, and `--sieve-sasl-mechanism` to override those values
-for a targeted command.
+Use `--sieve-host`, `--sieve-port`, `--sieve-username`,
+`--sieve-security-mode`, and `--sieve-sasl-mechanism` to override non-secret
+configuration values for a targeted command.
 The port and security mode are optional.
 The default is port `4190` with required STARTTLS.
 `ImplicitTls` is also supported.
@@ -104,7 +104,15 @@ Use `msieve capabilities` to inspect the server's advertised `SASL mechanisms`
 before choosing an explicit mechanism; this command does not authenticate.
 
 Authenticated commands refuse plaintext credentials.
-If the password variable is absent, an interactive terminal prompts without echoing it.
+Passwords are never accepted in an ordinary command-line argument.
+`TRANSIEVER_SIEVE_PASSWORD` remains available for documented headless automation.
+Use `--sieve-password-stdin` to read exactly one non-empty password line from
+standard input instead; this explicit selector takes precedence over the
+environment variable.
+When neither path supplies a password, an interactive terminal prompts without
+echoing it.
+Redirected input fails without prompting or reading standard input when both
+`--sieve-password-stdin` and `TRANSIEVER_SIEVE_PASSWORD` are absent.
 
 ### OAUTHBEARER
 
@@ -141,8 +149,14 @@ msieve list --sieve-host sieve.example.com --sieve-sasl-mechanism external --sie
 ```
 
 `--sieve-client-certificate` overrides `TRANSIEVER_SIEVE_CLIENT_CERTIFICATE`.
-The certificate password comes from `TRANSIEVER_SIEVE_CLIENT_CERTIFICATE_PASSWORD`, or a hidden interactive prompt when that variable is absent.
-No certificate-password command-line option exists.
+The certificate password comes from
+`TRANSIEVER_SIEVE_CLIENT_CERTIFICATE_PASSWORD`, or from one non-empty standard
+input line when `--sieve-client-certificate-password-stdin` is present.
+The explicit standard-input selector takes precedence over the environment
+variable.
+When neither path supplies a password, a terminal prompts without echoing it.
+Redirected input without either path fails before certificate loading.
+No certificate-password value option exists.
 On Windows, the CLI uses a temporary current-user key container for Schannel and .NET removes it when the certificate is disposed.
 On other operating systems, the private key stays memory-only through ephemeral key storage.
 The CLI does not set `PersistKeySet`, `Exportable`, or `MachineKeySet`, and does not install the certificate in an OS store.

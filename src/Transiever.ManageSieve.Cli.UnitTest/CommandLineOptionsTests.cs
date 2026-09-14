@@ -29,8 +29,6 @@ public sealed class CommandLineOptionsTests
             "4190",
             "--sieve-username",
             "user",
-            "--sieve-password",
-            "secret",
             "--sieve-security-mode",
             "ImplicitTls",
             "--sieve-sasl-mechanism",
@@ -44,9 +42,45 @@ public sealed class CommandLineOptionsTests
         Assert.Equal("sieve.example.com", options.SieveHost);
         Assert.Equal(4190, options.SievePort);
         Assert.Equal("user", options.SieveUserName);
-        Assert.Equal("secret", options.SievePassword);
         Assert.Equal(ManageSieveSecurityMode.ImplicitTls, options.SieveSecurity);
         Assert.Equal(ManageSieveSaslMechanism.ScramSha256, options.SieveSaslMechanism);
+    }
+
+    [Fact]
+    public void ParseRejectsPasswordValueWithoutDisplayingIt()
+    {
+        const string password = "password-sentinel";
+
+        ArgumentException exception = Assert.Throws<ArgumentException>(
+            () => CommandLineOptions.Parse(
+                ["list", "--sieve-password", password]));
+
+        Assert.Equal(
+            "Passwords cannot be supplied through --sieve-password.",
+            exception.Message);
+        Assert.DoesNotContain(password, exception.Message);
+    }
+
+    [Theory]
+    [InlineData("--sieve-password")]
+    [InlineData("--sieve-password-stdin")]
+    [InlineData("--sieve-client-certificate-password")]
+    [InlineData("--sieve-client-certificate-password-stdin")]
+    [InlineData("--sieve-oauth-token")]
+    [InlineData("--sieve-oauth-token-stdin")]
+    public void ParseRejectsSecretOptionValuesWithoutDisplayingThem(
+        string optionName)
+    {
+        const string password = "password-sentinel";
+
+        ArgumentException exception = Assert.Throws<ArgumentException>(
+            () => CommandLineOptions.Parse(
+                ["list", $"{optionName}={password}"]));
+
+        Assert.Equal(
+            "Secret input cannot be supplied through an option value.",
+            exception.Message);
+        Assert.DoesNotContain(password, exception.Message);
     }
 
     [Theory]
@@ -84,6 +118,15 @@ public sealed class CommandLineOptionsTests
     }
 
     [Fact]
+    public void ParseReadsPasswordStdinAsBooleanSelector()
+    {
+        CommandLineOptions options = CommandLineOptions.Parse(
+            ["list", "--sieve-password-stdin"]);
+
+        Assert.True(options.SievePasswordStdin);
+    }
+
+    [Fact]
     public void ParseReadsClientCertificatePathWithoutAcceptingPassword()
     {
         CommandLineOptions options = CommandLineOptions.Parse(
@@ -92,6 +135,15 @@ public sealed class CommandLineOptionsTests
         Assert.Equal("client.pfx", options.SieveClientCertificate);
         Assert.Throws<ArgumentException>(() => CommandLineOptions.Parse(
             ["list", "--sieve-client-certificate-password", "secret"]));
+    }
+
+    [Fact]
+    public void ParseReadsClientCertificatePasswordStdinAsBooleanSelector()
+    {
+        CommandLineOptions options = CommandLineOptions.Parse(
+            ["list", "--sieve-client-certificate-password-stdin"]);
+
+        Assert.True(options.SieveClientCertificatePasswordStdin);
     }
 
     [Fact]

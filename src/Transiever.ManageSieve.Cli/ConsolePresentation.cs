@@ -20,10 +20,11 @@ public static class ConsolePresentation
         output.WriteLine("  --sieve-host <host>          Override TRANSIEVER_SIEVE_HOST.");
         output.WriteLine("  --sieve-port <port>          Override TRANSIEVER_SIEVE_PORT.");
         output.WriteLine("  --sieve-username <name>      Override TRANSIEVER_SIEVE_USERNAME.");
-        output.WriteLine("  --sieve-password <value>     Override TRANSIEVER_SIEVE_PASSWORD.");
+        output.WriteLine("  --sieve-password-stdin       Read one password line from standard input.");
         output.WriteLine("  --sieve-security-mode <mode> Override TRANSIEVER_SIEVE_SECURITY_MODE.");
         output.WriteLine("  --sieve-sasl-mechanism <mode> auto, plain, scram-sha-256, scram-sha-256-plus, oauthbearer, or external.");
         output.WriteLine("  --sieve-client-certificate <path> Override TRANSIEVER_SIEVE_CLIENT_CERTIFICATE.");
+        output.WriteLine("  --sieve-client-certificate-password-stdin Read one client certificate password line from standard input.");
         output.WriteLine("  --sieve-oauth-token-stdin     Read one OAuth bearer token line from standard input.");
         output.WriteLine("  -h, --help                   Show this help.");
         output.WriteLine();
