@@ -1,76 +1,44 @@
-using System.Security.Cryptography;
-using System.Text;
-using Transiever.ManageSieve.Authentication;
+using Transiever.SaslClient;
 
 namespace Transiever.ManageSieve;
 
 /// <summary>SCRAM-SHA-256 SASL authenticator.</summary>
 public sealed class ManageSieveScramSha256Authenticator : IManageSieveAuthenticator
 {
-    private readonly ScramSha256Exchange _exchange;
+    private readonly ManageSieveSaslMechanismAdapter _adapter;
 
     public ManageSieveScramSha256Authenticator(
         string userName, string password, string? authorizationIdentity = null)
-        : this(userName, password, authorizationIdentity, CreateNonce)
+        : this(new SaslScramSha256Authenticator(
+            userName, password, authorizationIdentity))
     {
     }
 
     internal ManageSieveScramSha256Authenticator(
-        string userName,
-        string password,
-        string? authorizationIdentity,
-        Func<string> nonceFactory)
+        SaslScramSha256Authenticator mechanism)
     {
-        ArgumentNullException.ThrowIfNull(nonceFactory);
-        ValidateAsciiInput(userName, nameof(userName), allowEmpty: false);
-        ValidateAsciiInput(password, nameof(password), allowEmpty: true);
-        if (authorizationIdentity is not null)
-        {
-            ValidateAsciiInput(authorizationIdentity, nameof(authorizationIdentity), allowEmpty: true);
-        }
-        string nonce = nonceFactory();
-        ValidateNonce(nonce);
-        _exchange = new ScramSha256Exchange(userName, password, authorizationIdentity, nonce);
+        _adapter = new ManageSieveSaslMechanismAdapter(
+            mechanism,
+            preserveFailureMessage: true);
     }
 
-    public string Mechanism => "SCRAM-SHA-256";
+    public string Mechanism => _adapter.Mechanism;
 
-    public bool AllowsUnprotectedConnection => false;
+    public bool AllowsUnprotectedConnection => _adapter.AllowsUnprotectedConnection;
 
-    public ValueTask<ReadOnlyMemory<byte>?> GetInitialResponseAsync(CancellationToken cancellationToken = default) =>
-        _exchange.GetInitialResponseAsync(cancellationToken);
+    public ValueTask<ReadOnlyMemory<byte>?> GetInitialResponseAsync(
+        CancellationToken cancellationToken = default) =>
+        _adapter.GetInitialResponseAsync(cancellationToken);
 
-    public ValueTask<ReadOnlyMemory<byte>> RespondAsync(ReadOnlyMemory<byte> challenge, CancellationToken cancellationToken = default) =>
-        _exchange.RespondAsync(challenge, cancellationToken);
+    public ValueTask<ReadOnlyMemory<byte>> RespondAsync(
+        ReadOnlyMemory<byte> challenge,
+        CancellationToken cancellationToken = default) =>
+        _adapter.RespondAsync(challenge, cancellationToken);
 
-    public ValueTask CompleteAsync(ReadOnlyMemory<byte>? serverData, CancellationToken cancellationToken = default) =>
-        _exchange.CompleteAsync(serverData, cancellationToken);
+    public ValueTask CompleteAsync(
+        ReadOnlyMemory<byte>? serverData,
+        CancellationToken cancellationToken = default) =>
+        _adapter.CompleteAsync(serverData, cancellationToken);
 
-    public void Abort() => _exchange.Abort();
-
-    private static string CreateNonce() =>
-        Convert.ToBase64String(RandomNumberGenerator.GetBytes(18));
-
-    internal static void ValidateAsciiInput(string value, string parameterName, bool allowEmpty)
-    {
-        ArgumentNullException.ThrowIfNull(value, parameterName);
-        if ((!allowEmpty && value.Length == 0) || value.Length > 1024 ||
-            value.Any(character => character is < '\x20' or > '\x7e'))
-        {
-            throw new ArgumentException(
-                "Value must contain printable ASCII characters and be at most 1024 bytes.",
-                parameterName);
-        }
-    }
-
-    internal static void ValidateNonce(string nonce)
-    {
-        ArgumentNullException.ThrowIfNull(nonce);
-        if (nonce.Length is 0 or > 256 ||
-            nonce.Any(character => !ScramSha256Exchange.IsPrintableNonceCharacter(character)))
-        {
-            throw new ArgumentException("Nonce must contain printable SCRAM characters and be at most 256 bytes.", nameof(nonce));
-        }
-    }
-
+    public void Abort() => _adapter.Abort();
 }

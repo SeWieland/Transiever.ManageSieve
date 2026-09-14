@@ -1,186 +1,53 @@
+using Transiever.SaslClient;
+
 namespace Transiever.ManageSieve;
-
-using Transiever.ManageSieve.Authentication;
-
-internal interface IManageSieveChannelBindingAuthenticator
-{
-    string ChannelBindingName { get; }
-
-    void SetChannelBinding(ReadOnlyMemory<byte> binding);
-}
 
 /// <summary>SCRAM-SHA-256 channel-bound SASL authenticator.</summary>
 public sealed class ManageSieveScramSha256PlusAuthenticator :
     IManageSieveAuthenticator,
     IManageSieveChannelBindingAuthenticator
 {
-    private const string ChannelBindingNameValue = "tls-server-end-point";
-    private const string UnsupportedBindingMessage =
-        "SCRAM-SHA-256-PLUS requires a supported TLS 1.2 channel binding.";
-
-    private readonly string _userName;
-    private readonly string _password;
-    private readonly string? _authorizationIdentity;
-    private readonly string _nonce;
-    private ScramSha256Exchange? _exchange;
-    private byte[]? _channelBinding;
-    private bool _finished;
+    private readonly ManageSieveSaslMechanismAdapter _adapter;
 
     public ManageSieveScramSha256PlusAuthenticator(
         string userName, string password, string? authorizationIdentity = null)
-        : this(userName, password, authorizationIdentity, CreateNonce)
+        : this(new SaslScramSha256PlusAuthenticator(
+            userName, password, authorizationIdentity))
     {
     }
 
     internal ManageSieveScramSha256PlusAuthenticator(
-        string userName,
-        string password,
-        string? authorizationIdentity,
-        Func<string> nonceFactory)
+        SaslScramSha256PlusAuthenticator mechanism)
     {
-        ArgumentNullException.ThrowIfNull(nonceFactory);
-        ManageSieveScramSha256Authenticator.ValidateAsciiInput(
-            userName, nameof(userName), allowEmpty: false);
-        ManageSieveScramSha256Authenticator.ValidateAsciiInput(
-            password, nameof(password), allowEmpty: true);
-        if (authorizationIdentity is not null)
-        {
-            ManageSieveScramSha256Authenticator.ValidateAsciiInput(
-                authorizationIdentity, nameof(authorizationIdentity), allowEmpty: true);
-        }
-
-        string nonce = nonceFactory();
-        ManageSieveScramSha256Authenticator.ValidateNonce(nonce);
-        _userName = userName;
-        _password = password;
-        _authorizationIdentity = authorizationIdentity;
-        _nonce = nonce;
+        _adapter = new ManageSieveSaslMechanismAdapter(
+            mechanism,
+            preserveFailureMessage: true);
     }
 
-    public string Mechanism => "SCRAM-SHA-256-PLUS";
+    public string Mechanism => _adapter.Mechanism;
 
-    public bool AllowsUnprotectedConnection => false;
+    public bool AllowsUnprotectedConnection => _adapter.AllowsUnprotectedConnection;
 
     string IManageSieveChannelBindingAuthenticator.ChannelBindingName =>
-        ChannelBindingNameValue;
+        ((IManageSieveChannelBindingAuthenticator)_adapter).ChannelBindingName;
 
     void IManageSieveChannelBindingAuthenticator.SetChannelBinding(
-        ReadOnlyMemory<byte> binding)
-    {
-        if (binding.IsEmpty)
-        {
-            if (_channelBinding is not null || _exchange is not null)
-            {
-                ClearState();
-            }
+        ReadOnlyMemory<byte> binding) =>
+        ((IManageSieveChannelBindingAuthenticator)_adapter).SetChannelBinding(binding);
 
-            throw CreateUnsupportedBindingException();
-        }
+    public ValueTask<ReadOnlyMemory<byte>?> GetInitialResponseAsync(
+        CancellationToken cancellationToken = default) =>
+        _adapter.GetInitialResponseAsync(cancellationToken);
 
-        if (_finished)
-        {
-            throw CreateAuthenticationFailure();
-        }
-
-        if (_channelBinding is not null)
-        {
-            ClearState();
-            throw CreateUnsupportedBindingException();
-        }
-
-        _channelBinding = binding.ToArray();
-    }
-
-    public async ValueTask<ReadOnlyMemory<byte>?> GetInitialResponseAsync(
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            ScramSha256Exchange exchange = GetExchange();
-            return await exchange.GetInitialResponseAsync(cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch
-        {
-            ClearState();
-            throw;
-        }
-    }
-
-    public async ValueTask<ReadOnlyMemory<byte>> RespondAsync(
+    public ValueTask<ReadOnlyMemory<byte>> RespondAsync(
         ReadOnlyMemory<byte> challenge,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            ScramSha256Exchange exchange = GetExchange();
-            return await exchange.RespondAsync(challenge, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        catch
-        {
-            ClearState();
-            throw;
-        }
-    }
+        CancellationToken cancellationToken = default) =>
+        _adapter.RespondAsync(challenge, cancellationToken);
 
-    public async ValueTask CompleteAsync(
+    public ValueTask CompleteAsync(
         ReadOnlyMemory<byte>? serverData,
-        CancellationToken cancellationToken = default)
-    {
-        try
-        {
-            ScramSha256Exchange exchange = GetExchange();
-            await exchange.CompleteAsync(serverData, cancellationToken)
-                .ConfigureAwait(false);
-        }
-        finally
-        {
-            ClearState();
-        }
-    }
+        CancellationToken cancellationToken = default) =>
+        _adapter.CompleteAsync(serverData, cancellationToken);
 
-    public void Abort() => ClearState();
-
-    private ScramSha256Exchange GetExchange()
-    {
-        if (_finished)
-        {
-            throw CreateAuthenticationFailure();
-        }
-
-        if (_channelBinding is null)
-        {
-            throw CreateUnsupportedBindingException();
-        }
-
-        return _exchange ??= new ScramSha256Exchange(
-            _userName,
-            _password,
-            _authorizationIdentity,
-            _nonce,
-            ChannelBindingNameValue,
-            _channelBinding);
-    }
-
-    private void ClearState()
-    {
-        _finished = true;
-        _exchange?.Abort();
-        _exchange = null;
-        byte[]? binding = Interlocked.Exchange(ref _channelBinding, null);
-        if (binding is not null)
-        {
-            System.Security.Cryptography.CryptographicOperations.ZeroMemory(binding);
-        }
-    }
-
-    private static string CreateNonce() =>
-        Convert.ToBase64String(System.Security.Cryptography.RandomNumberGenerator.GetBytes(18));
-
-    private static ManageSieveAuthenticationException CreateUnsupportedBindingException() =>
-        new(UnsupportedBindingMessage);
-
-    private static ManageSieveAuthenticationException CreateAuthenticationFailure() =>
-        new("SCRAM-SHA-256 authentication failed.");
+    public void Abort() => _adapter.Abort();
 }

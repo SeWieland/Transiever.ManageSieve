@@ -25,6 +25,7 @@ For a human-oriented overview and tool picker, see the [Transiever ManageSieve g
 * `IManageSieveClient` represents one stateful ManageSieve session.
 * `IManageSieveClientFactory` creates independently owned clients.
 * `IManageSieveAuthenticator` represents a SASL challenge/response mechanism.
+* `ManageSieveSaslMechanismAdapter` uses a `Transiever.SaslClient.ISaslMechanism` without changing the ManageSieve exchange API.
 * `ManageSieveClientOptions` configures endpoint, security mode, and timeouts.
 * `ManageSieveCapabilities` exposes standard capabilities and preserves unknown capability values.
 * `ManageSieveCommandResult` exposes server messages, response codes, and warnings.
@@ -38,6 +39,10 @@ For a human-oriented overview and tool picker, see the [Transiever ManageSieve g
 See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md) for the SASL lifecycle, security, memory ownership, diagnostics, and failure contract.
 
 See the [architecture guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/architecture.md) for protocol constraints and the [testing guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/testing.md) for test policy.
+
+The five built-in ManageSieve authenticators remain source-compatible wrappers around the independently usable mechanisms from `Transiever.SaslClient`.
+Applications that already construct those authenticators do not need to change.
+Applications with another `ISaslMechanism` implementation can pass it through `ManageSieveSaslMechanismAdapter`; the ManageSieve client still enforces advertised capabilities, protected transport, client-certificate evidence, and supported channel binding before sending authentication data.
 
 ### SCRAM-SHA-256 and SCRAM-SHA-256-PLUS
 
@@ -85,7 +90,7 @@ The authenticator receives the token in memory from its caller; it does not acqu
 On a server error challenge, `ServerError` exposes the safe `ManageSieveOAuthBearerError` record with `Status`, optional `Scope`, and optional `OpenIdConfiguration` values.
 The `openid-configuration` value is diagnostic data only: it is an HTTPS absolute URL without userinfo or a fragment and is never fetched or cached.
 The client accepts direct success only through `CompleteAsync(null)`.
-See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md#oauthbearer) for the exact error bounds, diagnostics, and cleanup contract.
+See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md#oauthbearer) for safe error mapping and session recovery, with links to the SASL mechanism contract.
 
 ### EXTERNAL
 
@@ -109,7 +114,7 @@ The caller owns `clientCertificate` and must keep it alive until after client di
 The option controls local TLS identity; it does not change normal server-certificate validation.
 EXTERNAL requires an advertised mechanism and actual mutual-TLS certificate presentation.
 The default empty authorization identity requests the identity associated with the certificate; an optional custom identity is a server-authorized request, not a local account mapping.
-See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md#external) for UTF-8 limits, exact framing, ownership, and failure behavior.
+See the [authentication guide](https://github.com/SeWieland/Transiever.ManageSieve/blob/main/docs/authentication.md#external) for certificate setup, framing, ownership, and failure behavior.
 
 ## Script operations
 

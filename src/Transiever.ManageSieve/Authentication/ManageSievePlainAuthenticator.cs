@@ -1,84 +1,33 @@
-using System.Security.Cryptography;
-using System.Text;
+using Transiever.SaslClient;
 
 namespace Transiever.ManageSieve;
 
-/// <summary>
-/// SASL PLAIN authenticator for ManageSieve.
-/// </summary>
+/// <summary>SASL PLAIN authenticator for ManageSieve.</summary>
 public sealed class ManageSievePlainAuthenticator(
     string userName,
     string password,
     string? authorizationIdentity = null)
     : IManageSieveAuthenticator
 {
-    private byte[]? _response;
+    private readonly ManageSieveSaslMechanismAdapter _adapter = new(
+        new SaslPlainAuthenticator(userName, password, authorizationIdentity),
+        preserveFailureMessage: true);
 
-    public string Mechanism => "PLAIN";
+    public string Mechanism => _adapter.Mechanism;
 
     public ValueTask<ReadOnlyMemory<byte>?> GetInitialResponseAsync(
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        ClearResponse();
-        byte[] authenticationIdentity = Encoding.UTF8.GetBytes(userName);
-        byte[] secret = Encoding.UTF8.GetBytes(password);
-        byte[] authorization = Encoding.UTF8.GetBytes(authorizationIdentity ?? string.Empty);
-        byte[] credentialResponse = new byte[
-            authorization.Length + authenticationIdentity.Length + secret.Length + 2];
-
-        try
-        {
-            authorization.CopyTo(credentialResponse, 0);
-            authenticationIdentity.CopyTo(credentialResponse, authorization.Length + 1);
-            secret.CopyTo(
-                credentialResponse,
-                authorization.Length + authenticationIdentity.Length + 2);
-            _response = credentialResponse;
-            return ValueTask.FromResult<ReadOnlyMemory<byte>?>(credentialResponse);
-        }
-        catch
-        {
-            CryptographicOperations.ZeroMemory(credentialResponse);
-            throw;
-        }
-        finally
-        {
-            CryptographicOperations.ZeroMemory(authenticationIdentity);
-            CryptographicOperations.ZeroMemory(secret);
-            CryptographicOperations.ZeroMemory(authorization);
-        }
-    }
+        CancellationToken cancellationToken = default) =>
+        _adapter.GetInitialResponseAsync(cancellationToken);
 
     public ValueTask<ReadOnlyMemory<byte>> RespondAsync(
         ReadOnlyMemory<byte> challenge,
-        CancellationToken cancellationToken = default)
-    {
-        cancellationToken.ThrowIfCancellationRequested();
-        throw new ManageSieveAuthenticationException(
-            "SASL PLAIN does not support additional server challenges.");
-    }
+        CancellationToken cancellationToken = default) =>
+        _adapter.RespondAsync(challenge, cancellationToken);
 
     public ValueTask CompleteAsync(
         ReadOnlyMemory<byte>? serverData,
-        CancellationToken cancellationToken = default)
-    {
-        ClearResponse();
-        return serverData is null
-            ? ValueTask.CompletedTask
-            : ValueTask.FromException(
-                new ManageSieveAuthenticationException(
-                    "SASL PLAIN does not support server-final data."));
-    }
+        CancellationToken cancellationToken = default) =>
+        _adapter.CompleteAsync(serverData, cancellationToken);
 
-    public void Abort() => ClearResponse();
-
-    private void ClearResponse()
-    {
-        byte[]? responseToClear = Interlocked.Exchange(ref _response, null);
-        if (responseToClear is not null)
-        {
-            CryptographicOperations.ZeroMemory(responseToClear);
-        }
-    }
+    public void Abort() => _adapter.Abort();
 }

@@ -23,43 +23,6 @@ public sealed class ManageSieveExternalAuthenticatorTests
     }
 
     [Fact]
-    public async Task Identity_Uses1024Utf8OctetBoundary()
-    {
-        var authenticator = new ManageSieveExternalAuthenticator(new string('é', 512));
-
-        ReadOnlyMemory<byte>? response = await authenticator.GetInitialResponseAsync(
-            TestContext.Current.CancellationToken);
-        string tooLong = new string('é', 512) + "a";
-        ArgumentException exception = Assert.Throws<ArgumentException>(
-            () => new ManageSieveExternalAuthenticator(tooLong));
-
-        Assert.Equal(1024, response?.Length);
-        Assert.DoesNotContain(tooLong, exception.ToString(), StringComparison.Ordinal);
-    }
-
-    [Theory]
-    [InlineData("nul\0identity")]
-    public void Identity_RejectsInvalidTextWithoutEchoingIt(string identity)
-    {
-        ArgumentException exception = Assert.Throws<ArgumentException>(
-            () => new ManageSieveExternalAuthenticator(identity));
-
-        Assert.DoesNotContain(identity, exception.ToString(), StringComparison.Ordinal);
-        Assert.Null(exception.InnerException);
-    }
-
-    [Fact]
-    public void Identity_RejectsInvalidUtf16WithoutInnerException()
-    {
-        string identity = new('\uD800', 1);
-
-        ArgumentException exception = Assert.Throws<ArgumentException>(
-            () => new ManageSieveExternalAuthenticator(identity));
-
-        Assert.Null(exception.InnerException);
-    }
-
-    [Fact]
     public async Task Exchange_RejectsChallengesAndCompletionData()
     {
         var challenge = new ManageSieveExternalAuthenticator();

@@ -1,17 +1,9 @@
 namespace Transiever.ManageSieve.UnitTest;
 
 using System.Security.Authentication;
-using System.Text;
 
 public sealed class ManageSieveScramSha256PlusAuthenticatorTests
 {
-    private const string ClientNonce = "rOprNGfwEbeRWgbNEkqO";
-    private const string ServerNonce = ClientNonce + "%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0";
-    private const string ServerFirst =
-        "r=" + ServerNonce + ",s=W22ZaJ0SNY7soEsUEjb6gQ==,i=4096";
-    private static readonly byte[] EndpointBinding =
-        [0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
-         0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff];
     private static readonly byte[] CertificateDer =
         [0x30, 0x08, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08];
 
@@ -96,78 +88,4 @@ public sealed class ManageSieveScramSha256PlusAuthenticatorTests
                 "1.2.840.113549.1.1.11"));
     }
 
-    [Fact]
-    public async Task Plus_initial_response_contains_exact_unbound_gs2_header()
-    {
-        var authenticator = new ManageSieveScramSha256PlusAuthenticator(
-            "user", "pencil", authorizationIdentity: null,
-            nonceFactory: () => ClientNonce);
-        IManageSieveChannelBindingAuthenticator bindingAuthenticator = authenticator;
-        bindingAuthenticator.SetChannelBinding(EndpointBinding);
-
-        Assert.Equal(
-            "p=tls-server-end-point,,n=user,r=rOprNGfwEbeRWgbNEkqO"u8.ToArray(),
-            (await authenticator.GetInitialResponseAsync(
-                TestContext.Current.CancellationToken))?.ToArray());
-    }
-
-    [Fact]
-    public async Task Plus_proof_uses_raw_endpoint_binding_and_escaped_authorization_identity()
-    {
-        var authenticator = new ManageSieveScramSha256PlusAuthenticator(
-            "user", "pencil", "auth=z,id", () => ClientNonce);
-        IManageSieveChannelBindingAuthenticator bindingAuthenticator = authenticator;
-        bindingAuthenticator.SetChannelBinding(EndpointBinding);
-
-        await authenticator.GetInitialResponseAsync(TestContext.Current.CancellationToken);
-        ReadOnlyMemory<byte> response = await authenticator.RespondAsync(
-            Encoding.UTF8.GetBytes(ServerFirst), TestContext.Current.CancellationToken);
-
-        Assert.Equal(
-            "c=cD10bHMtc2VydmVyLWVuZC1wb2ludCxhPWF1dGg9M0R6PTJDaWQsABEiM0RVZneImaq7zN3u/w==,r=rOprNGfwEbeRWgbNEkqO%hvYDpWUa2RaTCAfuxFIlj)hNlF$k0,p=BBA0e81cyx7GsKJW4dRhCvKNltHFsz7b/3mV1FaFuC8="u8.ToArray(),
-            response.ToArray());
-    }
-
-    [Fact]
-    public async Task Plus_rejects_missing_binding_without_emitting_bare_scram()
-    {
-        var authenticator = new ManageSieveScramSha256PlusAuthenticator(
-            "user", "pencil", authorizationIdentity: null,
-            nonceFactory: () => ClientNonce);
-
-        await Assert.ThrowsAsync<ManageSieveAuthenticationException>(
-            () => authenticator.GetInitialResponseAsync(
-                TestContext.Current.CancellationToken).AsTask());
-    }
-
-    [Fact]
-    public void Plus_rejects_empty_binding_input()
-    {
-        var authenticator = new ManageSieveScramSha256PlusAuthenticator(
-            "user", "pencil", authorizationIdentity: null,
-            nonceFactory: () => ClientNonce);
-        IManageSieveChannelBindingAuthenticator bindingAuthenticator = authenticator;
-
-        Assert.Throws<ManageSieveAuthenticationException>(
-            () => bindingAuthenticator.SetChannelBinding(ReadOnlyMemory<byte>.Empty));
-    }
-
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
-    public void Plus_rejects_second_binding_input(bool identical)
-    {
-        var authenticator = new ManageSieveScramSha256PlusAuthenticator(
-            "user", "pencil", authorizationIdentity: null,
-            nonceFactory: () => ClientNonce);
-        IManageSieveChannelBindingAuthenticator bindingAuthenticator = authenticator;
-
-        bindingAuthenticator.SetChannelBinding(EndpointBinding);
-        ReadOnlyMemory<byte> secondBinding = identical
-            ? EndpointBinding
-            : new byte[EndpointBinding.Length + 1];
-
-        Assert.Throws<ManageSieveAuthenticationException>(
-            () => bindingAuthenticator.SetChannelBinding(secondBinding));
-    }
 }

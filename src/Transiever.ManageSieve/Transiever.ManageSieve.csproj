@@ -19,10 +19,19 @@
     <PackageReadmeFile>README.md</PackageReadmeFile>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <RepositoryType>git</RepositoryType>
+    <SaslClientProject>..\..\..\SaslClient\src\Transiever.SaslClient\Transiever.SaslClient.csproj</SaslClientProject>
   </PropertyGroup>
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
+  <ItemGroup Condition="Exists('$(SaslClientProject)')">
+    <ProjectReference Include="$(SaslClientProject)" />
+  </ItemGroup>
+
+  <ItemGroup Condition="!Exists('$(SaslClientProject)')">
+    <PackageReference Include="Transiever.SaslClient" Version="1.0.0" />
   </ItemGroup>
 
 </Project>
