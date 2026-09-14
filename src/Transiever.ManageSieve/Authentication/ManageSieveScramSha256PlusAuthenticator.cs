@@ -2,15 +2,6 @@ using Transiever.SaslClient;
 
 namespace Transiever.ManageSieve;
 
-internal interface IManageSieveChannelBindingAuthenticator
-{
-    bool UsesChannelBinding => true;
-
-    string ChannelBindingName { get; }
-
-    void SetChannelBinding(ReadOnlyMemory<byte> binding);
-}
-
 /// <summary>SCRAM-SHA-256 channel-bound SASL authenticator.</summary>
 public sealed class ManageSieveScramSha256PlusAuthenticator :
     IManageSieveAuthenticator,
