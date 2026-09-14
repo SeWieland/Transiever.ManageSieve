@@ -138,8 +138,9 @@ public sealed class EnvironmentSieveServerConfigurationProvider
         }
 
         string userName = options.SieveUserName ?? Required("USERNAME");
-        string password =
-            options.SievePassword ?? Read("PASSWORD") ?? ReadPasswordOrThrow();
+        string password = options.SievePasswordStdin
+            ? ReadStandardInputSecret("a Sieve password")
+            : Read("PASSWORD") ?? ReadPasswordOrThrow();
 
         return new SieveServerConfiguration(clientOptions, userName, password);
     }
@@ -154,10 +155,7 @@ public sealed class EnvironmentSieveServerConfigurationProvider
 
         if (options.SieveOAuthTokenStdin)
         {
-            return _readLine() is { Length: > 0 } token
-                ? token
-                : throw new InvalidOperationException(
-                    "Standard input did not contain an OAuth bearer token.");
+            return ReadStandardInputSecret("an OAuth bearer token");
         }
 
         if (_isInputRedirected())
@@ -251,6 +249,12 @@ public sealed class EnvironmentSieveServerConfigurationProvider
         return _readPassword();
     }
 
+    private string ReadStandardInputSecret(string secretName) =>
+        _readLine() is { Length: > 0 } password
+            ? password
+            : throw new InvalidOperationException(
+                $"Standard input did not contain {secretName}.");
+
     private static string ReadPassword() =>
         ReadSecret("ManageSieve password: ");
 
@@ -296,7 +300,9 @@ public sealed class EnvironmentSieveServerConfigurationProvider
     {
         string path = options.SieveClientCertificate ??
             Required("CLIENT_CERTIFICATE");
-        string? password = Read("CLIENT_CERTIFICATE_PASSWORD");
+        string? password = options.SieveClientCertificatePasswordStdin
+            ? ReadStandardInputSecret("a Sieve client certificate password")
+            : Read("CLIENT_CERTIFICATE_PASSWORD");
         if (password is null)
         {
             if (_isInputRedirected())

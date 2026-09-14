@@ -165,6 +165,79 @@ public sealed class SieveServerConfigurationProviderTests
     }
 
     [Fact]
+    public void ExternalCertificateReadsPasswordFromSelectedStandardInput()
+    {
+        string? loadedPassword = null;
+        var lineReads = 0;
+        var promptReads = 0;
+        using X509Certificate2 certificate = CreateCertificate();
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_HOST"] = "sieve.example.com",
+                ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "external",
+                ["TRANSIEVER_SIEVE_CLIENT_CERTIFICATE"] = "client.pfx",
+                ["TRANSIEVER_SIEVE_CLIENT_CERTIFICATE_PASSWORD"] = "environment-secret"
+            },
+            inputRedirected: true,
+            readLine: () =>
+            {
+                lineReads++;
+                return "stdin-secret";
+            },
+            readCertificatePassword: () =>
+            {
+                promptReads++;
+                return "prompt-secret";
+            },
+            loadPkcs12: (_, password, _) =>
+            {
+                loadedPassword = password;
+                return certificate;
+            });
+
+        _ = provider.GetAuthenticatedConnectionOptions(
+            CommandLineOptions.Parse(
+                ["list", "--sieve-client-certificate-password-stdin"]),
+            ManageSieveSaslMechanism.External);
+
+        Assert.Equal("stdin-secret", loadedPassword);
+        Assert.Equal(1, lineReads);
+        Assert.Equal(0, promptReads);
+    }
+
+    [Fact]
+    public void ExternalCertificateRejectsEmptySelectedPasswordInput()
+    {
+        var certificateLoads = 0;
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_HOST"] = "sieve.example.com",
+                ["TRANSIEVER_SIEVE_CLIENT_CERTIFICATE"] = "client.pfx"
+            },
+            inputRedirected: true,
+            readLine: () => string.Empty,
+            loadPkcs12: (_, _, _) =>
+            {
+                certificateLoads++;
+                return CreateCertificate();
+            });
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(
+                () => provider.GetAuthenticatedConnectionOptions(
+                    CommandLineOptions.Parse(
+                        ["list", "--sieve-client-certificate-password-stdin"]),
+                    ManageSieveSaslMechanism.External));
+
+        Assert.Equal(
+            "Standard input did not contain a Sieve client certificate password.",
+            exception.Message);
+        Assert.Equal(0, certificateLoads);
+    }
+
+    [Fact]
     public void CapabilitiesDoesNotLoadExternalCertificate()
     {
         var loadCount = 0;
@@ -432,6 +505,63 @@ public sealed class SieveServerConfigurationProviderTests
     }
 
     [Fact]
+    public void AuthenticatedConfigurationReadsPasswordFromSelectedStandardInput()
+    {
+        var lineReads = 0;
+        var promptReads = 0;
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_HOST"] = "sieve.example.com",
+                ["TRANSIEVER_SIEVE_USERNAME"] = "user@example.com",
+                ["TRANSIEVER_SIEVE_PASSWORD"] = "environment-secret"
+            },
+            inputRedirected: true,
+            readLine: () =>
+            {
+                lineReads++;
+                return "stdin-secret";
+            },
+            readPassword: () =>
+            {
+                promptReads++;
+                return "prompt-secret";
+            });
+
+        SieveServerConfiguration configuration =
+            provider.GetAuthenticatedConfiguration(
+                CommandLineOptions.Parse(["list", "--sieve-password-stdin"]));
+
+        Assert.Equal("stdin-secret", configuration.Password);
+        Assert.Equal(1, lineReads);
+        Assert.Equal(0, promptReads);
+    }
+
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    public void AuthenticatedConfigurationRejectsMissingOrEmptySelectedPasswordInput(
+        string? standardInput)
+    {
+        var provider = CreateProvider(
+            new Dictionary<string, string?>
+            {
+                ["TRANSIEVER_SIEVE_HOST"] = "sieve.example.com",
+                ["TRANSIEVER_SIEVE_USERNAME"] = "user@example.com"
+            },
+            inputRedirected: true,
+            readLine: () => standardInput);
+
+        InvalidOperationException exception =
+            Assert.Throws<InvalidOperationException>(
+                () => provider.GetAuthenticatedConfiguration(
+                    CommandLineOptions.Parse(
+                        ["list", "--sieve-password-stdin"])));
+
+        Assert.Equal("Standard input did not contain a Sieve password.", exception.Message);
+    }
+
+    [Fact]
     public void AuthenticatedConfigurationRejectsPlaintextCredentials()
     {
         var provider = CreateProvider(
@@ -454,13 +584,24 @@ public sealed class SieveServerConfigurationProviderTests
     [Fact]
     public void MissingPasswordThrowsWhenInputIsRedirected()
     {
+        var inputReads = 0;
         var provider = CreateProvider(
             new Dictionary<string, string?>
             {
                 ["TRANSIEVER_SIEVE_HOST"] = "sieve.example.com",
                 ["TRANSIEVER_SIEVE_USERNAME"] = "user@example.com"
             },
-            inputRedirected: true);
+            inputRedirected: true,
+            readLine: () =>
+            {
+                inputReads++;
+                return "stdin-secret";
+            },
+            readPassword: () =>
+            {
+                inputReads++;
+                return "prompt-secret";
+            });
 
         InvalidOperationException exception =
             Assert.Throws<InvalidOperationException>(
@@ -468,6 +609,7 @@ public sealed class SieveServerConfigurationProviderTests
                     CommandLineOptions.Parse(["list"])));
 
         Assert.Contains("TRANSIEVER_SIEVE_PASSWORD", exception.Message);
+        Assert.Equal(0, inputReads);
     }
 
     private static EnvironmentSieveServerConfigurationProvider CreateProvider(
@@ -476,13 +618,14 @@ public sealed class SieveServerConfigurationProviderTests
         Func<string>? readOAuthToken = null,
         Func<string?>? readLine = null,
         Func<string>? readCertificatePassword = null,
-        Func<string, string?, X509KeyStorageFlags, X509Certificate2>? loadPkcs12 = null) =>
+        Func<string, string?, X509KeyStorageFlags, X509Certificate2>? loadPkcs12 = null,
+        Func<string>? readPassword = null) =>
         new(
             name => environment.TryGetValue(name, out string? value)
                 ? value
                 : null,
             () => inputRedirected,
-            () => "prompted",
+            readPassword ?? (() => "prompted"),
             readOAuthToken ?? (() => "oauth-token"),
             readLine ?? (() => null),
             readCertificatePassword,

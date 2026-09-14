@@ -41,7 +41,7 @@ public sealed class ManageSieveCliApplicationTests
     }
 
     [Fact]
-    public async Task CapabilitiesDoesNotRequestOAuthBearerToken()
+    public async Task CapabilitiesDoesNotRequestSecrets()
     {
         var client = new FakeManageSieveClient
         {
@@ -59,6 +59,8 @@ public sealed class ManageSieveCliApplicationTests
                 "capabilities",
                 "--sieve-sasl-mechanism",
                 "oauthbearer",
+                "--sieve-password-stdin",
+                "--sieve-client-certificate-password-stdin",
                 "--sieve-oauth-token-stdin"
             ]),
             TestContext.Current.CancellationToken);
