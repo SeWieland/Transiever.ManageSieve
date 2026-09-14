@@ -31,7 +31,7 @@
   </ItemGroup>
 
   <ItemGroup Condition="!Exists('$(SaslClientProject)')">
-    <PackageReference Include="Transiever.SaslClient" Version="0.1.0-beta.1" />
+    <PackageReference Include="Transiever.SaslClient" Version="1.0.0" />
   </ItemGroup>
 
 </Project>
