@@ -52,6 +52,12 @@ public sealed class CommandLineOptions
             return new CommandLineOptions { ShowHelp = true };
         }
 
+        if (IsSecretOptionValue(args[0]))
+        {
+            throw new ArgumentException(
+                "Secret input cannot be supplied through an option value.");
+        }
+
         ManageSieveCliCommand command = ParseCommand(args[0])
             ?? throw new ArgumentException($"Unknown command: {args[0]}");
         var index = 1;
@@ -119,6 +125,12 @@ public sealed class CommandLineOptions
                 case "--help":
                     return new CommandLineOptions { ShowHelp = true };
                 default:
+                    if (index > 1 && args[index - 1] == "--sieve-password-stdin")
+                    {
+                        throw new ArgumentException(
+                            "Secret input cannot be supplied through an option value.");
+                    }
+
                     if (IsSecretOptionValue(option))
                     {
                         throw new ArgumentException(
