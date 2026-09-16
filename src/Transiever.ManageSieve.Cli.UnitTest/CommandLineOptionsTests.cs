@@ -62,6 +62,18 @@ public sealed class CommandLineOptionsTests
     }
 
     [Theory]
+    [InlineData("--sieve-password=review-sentinel")]
+    [InlineData("--sieve-password-stdin", "-review-sentinel")]
+    public void ParseRedactsPasswordValuesBeforeOrAfterTheCommand(params string[] args)
+    {
+        ArgumentException exception = Assert.Throws<ArgumentException>(
+            () => CommandLineOptions.Parse(args.Length == 1 ? args : ["list", ..args]));
+
+        Assert.Equal("Secret input cannot be supplied through an option value.", exception.Message);
+        Assert.DoesNotContain("review-sentinel", exception.Message);
+    }
+
+    [Theory]
     [InlineData("--sieve-password")]
     [InlineData("--sieve-password-stdin")]
     [InlineData("--sieve-client-certificate-password")]
