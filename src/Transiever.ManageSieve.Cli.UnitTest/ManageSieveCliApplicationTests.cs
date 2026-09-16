@@ -71,6 +71,257 @@ public sealed class ManageSieveCliApplicationTests
     }
 
     [Fact]
+    public async Task CapabilitiesReportsAutoSelectionFromPostTlsCapabilities()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities(),
+            CapabilitiesAfterStartTls = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(
+                    ["PLAIN", "SCRAM-SHA-256"])
+            }
+        };
+        TestApplication app = CreateApplication(client);
+
+        await app.Application.RunAsync(
+            CommandLineOptions.Parse(["capabilities"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Contains(
+            "SASL selection: auto selects SCRAM-SHA-256",
+            app.TextOutput,
+            StringComparison.Ordinal);
+        Assert.False(client.Authenticated);
+    }
+
+    [Fact]
+    public async Task CapabilitiesReportsRejectedExplicitSelectionWithoutAuthentication()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["PLAIN"])
+            }
+        };
+        TestApplication app = CreateApplication(client);
+
+        int exitCode = await app.Application.RunAsync(
+            CommandLineOptions.Parse(
+                ["capabilities", "--sieve-sasl-mechanism", "scram-sha-256"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains(
+            "SASL selection: scram-sha-256 rejects: The server did not advertise the selected SASL mechanism: SCRAM-SHA-256.",
+            app.TextOutput,
+            StringComparison.Ordinal);
+        Assert.False(client.Authenticated);
+    }
+
+    [Fact]
+    public async Task CapabilitiesRejectsExternalWithoutInspectingCertificateEvidence()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(
+                    ["EXTERNAL", "PLAIN", "SCRAM-SHA-256-PLUS"])
+            }
+        };
+        TestApplication app = CreateApplication(client);
+
+        int exitCode = await app.Application.RunAsync(
+            CommandLineOptions.Parse(
+                ["capabilities", "--sieve-sasl-mechanism", "external"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains(
+            "Locally usable SASL mechanisms: PLAIN",
+            app.TextOutput,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SASL selection: external rejects: A verified TLS client certificate is not available to capabilities.",
+            app.TextOutput,
+            StringComparison.Ordinal);
+        Assert.False(client.Authenticated);
+    }
+
+    [Fact]
+    public async Task CapabilitiesRejectsPlaintextSelectionWithoutAuthentication()
+    {
+        var client = new FakeManageSieveClient();
+        var provider = new TrackingSieveServerConfigurationProvider
+        {
+            ConnectionOptions = new ManageSieveClientOptions
+            {
+                Host = "sieve.example.com",
+                SecurityMode = ManageSieveSecurityMode.PlainText
+            }
+        };
+        TestApplication app = CreateApplication(client, provider);
+
+        int exitCode = await app.Application.RunAsync(
+            CommandLineOptions.Parse(["capabilities"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Equal(0, exitCode);
+        Assert.Contains(
+            "SASL selection: auto rejects: A protected connection is required.",
+            app.TextOutput,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "Locally usable SASL mechanisms: <none>",
+            app.TextOutput,
+            StringComparison.Ordinal);
+        Assert.False(client.Authenticated);
+    }
+
+    [Fact]
+    public async Task CapabilitiesExplainsUnavailablePlusChannelBinding()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(
+                    ["PLAIN", "SCRAM-SHA-256-PLUS"])
+            }
+        };
+        TestApplication app = CreateApplication(client);
+
+        await app.Application.RunAsync(
+            CommandLineOptions.Parse(
+                ["capabilities", "--sieve-sasl-mechanism", "scram-sha-256-plus"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Contains(
+            "SASL selection: scram-sha-256-plus rejects: SCRAM-SHA-256-PLUS requires supported TLS channel binding.",
+            app.TextOutput,
+            StringComparison.Ordinal);
+        Assert.False(client.Authenticated);
+    }
+
+    [Fact]
+    public async Task CapabilitiesExplainsWhyAutoSkipsUnavailablePlus()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(
+                    ["PLAIN", "SCRAM-SHA-256-PLUS"])
+            }
+        };
+        TestApplication app = CreateApplication(client);
+
+        await app.Application.RunAsync(
+            CommandLineOptions.Parse(["capabilities"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Contains(
+            "SASL exclusions: SCRAM-SHA-256-PLUS requires supported TLS channel binding.",
+            app.TextOutput,
+            StringComparison.Ordinal);
+        Assert.Contains(
+            "SASL selection: auto selects PLAIN",
+            app.TextOutput,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CapabilitiesRecognizesCaseInsensitiveAdvertisedMechanisms()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(
+                    ["plain"], StringComparer.OrdinalIgnoreCase)
+            }
+        };
+        TestApplication app = CreateApplication(client);
+
+        await app.Application.RunAsync(
+            CommandLineOptions.Parse(["capabilities"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Contains(
+            "Locally usable SASL mechanisms: plain",
+            app.TextOutput,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task CapabilitiesSelectsUsablePlusOverImplicitTls()
+    {
+        var client = new FakeManageSieveClient
+        {
+            CanUseScramSha256Plus = true,
+            CapabilitiesResult = new ManageSieveCapabilities
+            {
+                SaslMechanisms = new HashSet<string>(["SCRAM-SHA-256-PLUS"])
+            }
+        };
+        var provider = new TrackingSieveServerConfigurationProvider
+        {
+            ConnectionOptions = new ManageSieveClientOptions
+            {
+                Host = "sieve.example.com",
+                SecurityMode = ManageSieveSecurityMode.ImplicitTls
+            }
+        };
+        TestApplication app = CreateApplication(client, provider);
+
+        await app.Application.RunAsync(
+            CommandLineOptions.Parse(["capabilities"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.False(client.StartTlsCalled);
+        Assert.Contains(
+            "SASL selection: auto selects SCRAM-SHA-256-PLUS",
+            app.TextOutput,
+            StringComparison.Ordinal);
+        Assert.False(client.Authenticated);
+    }
+
+    [Fact]
+    public async Task CapabilitySelectionMatchesAuthenticatedSelection()
+    {
+        ManageSieveCapabilities capabilities = new()
+        {
+            SaslMechanisms = new HashSet<string>(["PLAIN", "SCRAM-SHA-256"])
+        };
+        var diagnosticClient = new FakeManageSieveClient
+        {
+            CapabilitiesResult = capabilities
+        };
+        var authenticatedClient = new FakeManageSieveClient
+        {
+            CapabilitiesResult = capabilities
+        };
+        TestApplication diagnostic = CreateApplication(diagnosticClient);
+        TestApplication authenticated = CreateApplication(authenticatedClient);
+
+        await diagnostic.Application.RunAsync(
+            CommandLineOptions.Parse(["capabilities"]),
+            TestContext.Current.CancellationToken);
+        await authenticated.Application.RunAsync(
+            CommandLineOptions.Parse(["list"]),
+            TestContext.Current.CancellationToken);
+
+        Assert.Contains(
+            "SASL selection: auto selects SCRAM-SHA-256",
+            diagnostic.TextOutput,
+            StringComparison.Ordinal);
+        Assert.IsType<ManageSieveScramSha256Authenticator>(
+            authenticatedClient.Authenticator);
+    }
+
+    [Fact]
     public async Task ListPrintsScriptsAndAuthenticates()
     {
         var client = new FakeManageSieveClient

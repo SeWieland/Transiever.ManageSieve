@@ -100,8 +100,14 @@ that mechanism is not advertised; explicit PLUS also fails when it is not
 locally usable and never downgrades to another mechanism.
 These selection failures occur before credentials are loaded, so they do not
 prompt for a password or emit authentication bytes.
-Use `msieve capabilities` to inspect the server's advertised `SASL mechanisms`
-before choosing an explicit mechanism; this command does not authenticate.
+Use `msieve capabilities` to inspect the authoritative post-security `SASL`
+advertisement, locally usable password-family mechanisms, and the configured
+automatic or explicit selection result before choosing an explicit mechanism.
+It does not authenticate, prompt for credentials, read a token, or load a
+client certificate.
+An EXTERNAL result reports that this command lacks verified mutual-TLS
+client-certificate evidence; an advertised mechanism alone does not establish
+that it can authenticate an account.
 
 Authenticated commands refuse plaintext credentials.
 Passwords are never accepted in an ordinary command-line argument.
@@ -137,7 +143,9 @@ Plaintext transport, a missing post-TLS `OAUTHBEARER` advertisement, and authent
 
 `auto` never selects `OAUTHBEARER`.
 Its order remains advertised, locally usable `SCRAM-SHA-256-PLUS`, then `SCRAM-SHA-256`, then `PLAIN`.
-Use `msieve capabilities` to inspect the server's advertised SASL mechanisms only; it performs no OAuth or OpenID Connect discovery and never requests a token.
+Use `msieve capabilities` to inspect the server's advertised SASL mechanisms
+and the configured selection preview; it performs no OAuth or OpenID Connect
+discovery and never requests a token.
 
 ### EXTERNAL
 
@@ -172,4 +180,7 @@ EXTERNAL failures never retry or downgrade to another mechanism.
 The CLI always sends an empty authorization identity, asking the server to use the identity associated with the certificate.
 Custom authorization identities are available only through the library API.
 `auto` never selects EXTERNAL or loads a certificate; its password-family order remains unchanged.
-`msieve capabilities` also does not load a certificate: it reports advertisement only, which does not prove certificate presentation, acceptance, or account authorization.
+`msieve capabilities` does not load a certificate. Its EXTERNAL result
+therefore reports unavailable verified client-certificate evidence; server
+advertisement does not prove certificate presentation, acceptance, or account
+authorization.
