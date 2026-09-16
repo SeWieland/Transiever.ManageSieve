@@ -67,7 +67,25 @@ public sealed class ManageSieveCliApplication
             await ConnectAsync(connectionOptions, cancellationToken);
         ManageSieveCapabilities capabilities =
             await client.RefreshCapabilitiesAsync(cancellationToken);
-        ConsolePresentation.PrintCapabilities(_textOutput, capabilities);
+        ManageSieveSaslMechanism requestedMechanism =
+            _configurationProvider.GetSaslMechanism(options);
+        string selection = DescribeSaslSelection(
+            requestedMechanism,
+            capabilities.SaslMechanisms,
+            client,
+            connectionOptions.SecurityMode);
+        ConsolePresentation.PrintCapabilities(
+            _textOutput,
+            capabilities,
+            selection,
+            GetLocallyUsableSaslMechanisms(
+                capabilities.SaslMechanisms,
+                client,
+                connectionOptions.SecurityMode),
+            GetSaslExclusion(
+                capabilities.SaslMechanisms,
+                client,
+                connectionOptions.SecurityMode));
     }
 
     private async Task ListScriptsAsync(
@@ -295,18 +313,18 @@ public sealed class ManageSieveCliApplication
     {
         if (requested == ManageSieveSaslMechanism.Auto)
         {
-            if (advertised.Contains("SCRAM-SHA-256-PLUS") &&
+            if (ContainsMechanism(advertised, "SCRAM-SHA-256-PLUS") &&
                 client.CanUseScramSha256Plus)
             {
                 return "SCRAM-SHA-256-PLUS";
             }
 
-            if (advertised.Contains("SCRAM-SHA-256"))
+            if (ContainsMechanism(advertised, "SCRAM-SHA-256"))
             {
                 return "SCRAM-SHA-256";
             }
 
-            if (advertised.Contains("PLAIN"))
+            if (ContainsMechanism(advertised, "PLAIN"))
             {
                 return "PLAIN";
             }
@@ -325,7 +343,7 @@ public sealed class ManageSieveCliApplication
             _ => throw new ManageSieveAuthenticationException(
                 $"Unknown Sieve SASL mechanism: {requested}.")
         };
-        if (!advertised.Contains(mechanism))
+        if (!ContainsMechanism(advertised, mechanism))
         {
             throw new ManageSieveAuthenticationException(
                 $"The server did not advertise the selected SASL mechanism: {mechanism}.");
@@ -340,6 +358,81 @@ public sealed class ManageSieveCliApplication
 
         return mechanism;
     }
+
+    private static string DescribeSaslSelection(
+        ManageSieveSaslMechanism requestedMechanism,
+        IReadOnlySet<string> advertised,
+        IManageSieveClient client,
+        ManageSieveSecurityMode securityMode)
+    {
+        string requested = FormatSaslMechanism(requestedMechanism);
+        if (securityMode == ManageSieveSecurityMode.PlainText)
+        {
+            return $"{requested} rejects: A protected connection is required.";
+        }
+
+        try
+        {
+            string selected = SelectSaslMechanism(
+                requestedMechanism,
+                advertised,
+                client);
+            return requestedMechanism == ManageSieveSaslMechanism.External
+                ? $"{requested} rejects: A verified TLS client certificate is not available to capabilities."
+                : $"{requested} selects {selected}";
+        }
+        catch (ManageSieveAuthenticationException exception)
+        {
+            if (requestedMechanism == ManageSieveSaslMechanism.ScramSha256Plus &&
+                ContainsMechanism(advertised, "SCRAM-SHA-256-PLUS") &&
+                !client.CanUseScramSha256Plus)
+            {
+                return $"{requested} rejects: SCRAM-SHA-256-PLUS requires supported TLS channel binding.";
+            }
+
+            return $"{requested} rejects: {exception.Message}";
+        }
+    }
+
+    private static IReadOnlySet<string> GetLocallyUsableSaslMechanisms(
+        IReadOnlySet<string> advertised,
+        IManageSieveClient client,
+        ManageSieveSecurityMode securityMode) =>
+        securityMode == ManageSieveSecurityMode.PlainText
+            ? new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            : advertised.Where(mechanism =>
+            mechanism.Equals("PLAIN", StringComparison.OrdinalIgnoreCase) ||
+            mechanism.Equals("SCRAM-SHA-256", StringComparison.OrdinalIgnoreCase) ||
+            mechanism.Equals("SCRAM-SHA-256-PLUS", StringComparison.OrdinalIgnoreCase) &&
+            client.CanUseScramSha256Plus)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+    private static bool ContainsMechanism(
+        IReadOnlySet<string> advertised,
+        string mechanism) =>
+        advertised.Contains(mechanism, StringComparer.OrdinalIgnoreCase);
+
+    private static string? GetSaslExclusion(
+        IReadOnlySet<string> advertised,
+        IManageSieveClient client,
+        ManageSieveSecurityMode securityMode) =>
+        securityMode != ManageSieveSecurityMode.PlainText &&
+        ContainsMechanism(advertised, "SCRAM-SHA-256-PLUS") &&
+        !client.CanUseScramSha256Plus
+            ? "SCRAM-SHA-256-PLUS requires supported TLS channel binding."
+            : null;
+
+    private static string FormatSaslMechanism(ManageSieveSaslMechanism mechanism) =>
+        mechanism switch
+        {
+            ManageSieveSaslMechanism.Auto => "auto",
+            ManageSieveSaslMechanism.Plain => "plain",
+            ManageSieveSaslMechanism.ScramSha256 => "scram-sha-256",
+            ManageSieveSaslMechanism.ScramSha256Plus => "scram-sha-256-plus",
+            ManageSieveSaslMechanism.OAuthBearer => "oauthbearer",
+            ManageSieveSaslMechanism.External => "external",
+            _ => mechanism.ToString().ToLowerInvariant()
+        };
 
     private async Task<IManageSieveClient> ConnectAsync(
         ManageSieveClientOptions options,

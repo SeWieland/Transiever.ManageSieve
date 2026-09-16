@@ -34,7 +34,10 @@ public static class ConsolePresentation
 
     public static void PrintCapabilities(
         TextWriter output,
-        ManageSieveCapabilities capabilities)
+        ManageSieveCapabilities capabilities,
+        string? saslSelection = null,
+        IReadOnlySet<string>? locallyUsableSaslMechanisms = null,
+        string? saslExclusion = null)
     {
         output.WriteLine($"Implementation: {Display(capabilities.Implementation)}");
         output.WriteLine($"Protocol: {Display(capabilities.ProtocolVersion)}");
@@ -44,6 +47,19 @@ public static class ConsolePresentation
         output.WriteLine($"STARTTLS: {Display(capabilities.SupportsStartTls)}");
         output.WriteLine(
             $"SASL mechanisms: {Display(capabilities.SaslMechanisms)}");
+        if (locallyUsableSaslMechanisms is not null)
+        {
+            output.WriteLine(
+                $"Locally usable SASL mechanisms: {Display(locallyUsableSaslMechanisms)}");
+        }
+        if (saslExclusion is not null)
+        {
+            output.WriteLine($"SASL exclusions: {saslExclusion}");
+        }
+        if (saslSelection is not null)
+        {
+            output.WriteLine($"SASL selection: {saslSelection}");
+        }
         output.WriteLine(
             $"Sieve extensions: {Display(capabilities.SieveExtensions)}");
         output.WriteLine(
