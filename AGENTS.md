@@ -20,7 +20,6 @@ docs/architecture.md
 docs/testing.md
 src/
   Transiever.ManageSieve.Cli/
-  Transiever.ManageSieve.Cli.UnitTest/
   Transiever.ManageSieve/
   Transiever.ManageSieve.UnitTest/
   Transiever.ManageSieve.IntegrationTest/
@@ -50,7 +49,7 @@ Update the canonical owner for the changed behavior.
 ```bash
 dotnet restore Transiever.ManageSieve.slnx
 dotnet build Transiever.ManageSieve.slnx
-dotnet test Transiever.ManageSieve.slnx
+dotnet test --solution Transiever.ManageSieve.slnx
 ```
 
 Unit tests require no network.

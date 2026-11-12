@@ -34,4 +34,4 @@ jobs:
         run: dotnet build Transiever.ManageSieve.slnx --configuration Release --no-restore
 
       - name: Test
-        run: dotnet test Transiever.ManageSieve.slnx --configuration Release --no-build
+        run: dotnet test --solution Transiever.ManageSieve.slnx --configuration Release --no-build

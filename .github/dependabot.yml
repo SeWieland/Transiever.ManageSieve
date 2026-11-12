@@ -32,7 +32,6 @@ updates:
   - package-ecosystem: nuget
     directories:
       - /src/Transiever.ManageSieve.UnitTest
-      - /src/Transiever.ManageSieve.Cli.UnitTest
       - /src/Transiever.ManageSieve.IntegrationTest
       - /src/Transiever.ManageSieve.LiveTest
     schedule:
