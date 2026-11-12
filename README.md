@@ -57,8 +57,8 @@ Start here, then follow the focused guides:
 ```text
 src/Transiever.ManageSieve/                 Packable library
 src/Transiever.ManageSieve.Cli/             Packable msieve CLI
-src/Transiever.ManageSieve.Cli.UnitTest/    CLI parsing, configuration, and command tests
-src/Transiever.ManageSieve.UnitTest/        Parser, serializer, session, and API tests
+src/Transiever.ManageSieve.UnitTest/        Parser, serializer, session, API, and CLI tests
+  Cli/                                      CLI parsing, configuration, and command tests
 src/Transiever.ManageSieve.IntegrationTest/ Loopback TLS and Docker-backed tests
 src/Transiever.ManageSieve.LiveTest/        Explicitly enabled live-provider tests
 ```
@@ -102,7 +102,7 @@ Normal platform certificate validation is always used by the public client.
 
 ```bash
 dotnet build Transiever.ManageSieve.slnx
-dotnet test Transiever.ManageSieve.slnx
+dotnet test --solution Transiever.ManageSieve.slnx
 dotnet run --project src/Transiever.ManageSieve.Cli -- --help
 ```
 

@@ -7,8 +7,8 @@ The authentication lifecycle and failure contract live in [authentication](authe
 
 ## Test Layers
 
-`Transiever.ManageSieve.UnitTest` is deterministic and requires no network or Docker.
-It should cover parser, serializer, state-transition, authentication, timeout, cancellation, disposal, and public API behavior.
+`Transiever.ManageSieve.UnitTest` contains deterministic library and CLI tests and requires no network or Docker.
+It should cover parser, serializer, state-transition, authentication, timeout, cancellation, disposal, public API, CLI parsing, configuration, and command behavior.
 The reusable internal `SaslConformanceHarness` supplies scripted fragmented streams and transports for offline authentication tests.
 It records exact wire bytes and non-secret buffer observations without contacting a server or requiring credentials.
 Conformance cases use unique secret sentinels, and the harness is reusable by future SASL mechanisms.
@@ -45,7 +45,7 @@ They make no live token, provider, HTTP, OAuth, OpenID Connect, or Docker reques
 Run only the PLUS conformance cases with:
 
 ```bash
-dotnet test Transiever.ManageSieve.slnx --no-build --filter "FullyQualifiedName~Plus"
+dotnet test --project src/Transiever.ManageSieve.UnitTest --filter 'FullyQualifiedName~Plus'
 ```
 
 ## EXTERNAL Conformance
