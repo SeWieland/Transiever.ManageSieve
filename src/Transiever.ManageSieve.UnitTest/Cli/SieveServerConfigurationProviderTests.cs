@@ -164,8 +164,10 @@ public sealed class SieveServerConfigurationProviderTests
         Assert.Equal(1, passwordReads);
     }
 
-    [Fact]
-    public void ExternalCertificateReadsPasswordFromSelectedStandardInput()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void ExternalCertificateReadsPasswordFromSelectedStandardInput(bool inputRedirected)
     {
         string? loadedPassword = null;
         var lineReads = 0;
@@ -179,7 +181,7 @@ public sealed class SieveServerConfigurationProviderTests
                 ["TRANSIEVER_SIEVE_CLIENT_CERTIFICATE"] = "client.pfx",
                 ["TRANSIEVER_SIEVE_CLIENT_CERTIFICATE_PASSWORD"] = "environment-secret"
             },
-            inputRedirected: true,
+            inputRedirected: inputRedirected,
             readLine: () =>
             {
                 lineReads++;
@@ -336,8 +338,10 @@ public sealed class SieveServerConfigurationProviderTests
         Assert.DoesNotContain("super-secret", exception.Message);
     }
 
-    [Fact]
-    public void OAuthBearerTokenReadsOneLineOnlyWhenStdinIsSelected()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void OAuthBearerTokenReadsOneLineOnlyWhenStdinIsSelected(bool inputRedirected)
     {
         var lineReads = 0;
         var hiddenReads = 0;
@@ -347,7 +351,7 @@ public sealed class SieveServerConfigurationProviderTests
                 ["TRANSIEVER_SIEVE_SASL_MECHANISM"] = "oauthbearer",
                 ["TRANSIEVER_SIEVE_OAUTH_TOKEN"] = "environment-token"
             },
-            inputRedirected: true,
+            inputRedirected: inputRedirected,
             readOAuthToken: () =>
             {
                 hiddenReads++;
@@ -504,8 +508,10 @@ public sealed class SieveServerConfigurationProviderTests
         Assert.Equal("secret", configuration.Password);
     }
 
-    [Fact]
-    public void AuthenticatedConfigurationReadsPasswordFromSelectedStandardInput()
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public void AuthenticatedConfigurationReadsPasswordFromSelectedStandardInput(bool inputRedirected)
     {
         var lineReads = 0;
         var promptReads = 0;
@@ -516,7 +522,7 @@ public sealed class SieveServerConfigurationProviderTests
                 ["TRANSIEVER_SIEVE_USERNAME"] = "user@example.com",
                 ["TRANSIEVER_SIEVE_PASSWORD"] = "environment-secret"
             },
-            inputRedirected: true,
+            inputRedirected: inputRedirected,
             readLine: () =>
             {
                 lineReads++;

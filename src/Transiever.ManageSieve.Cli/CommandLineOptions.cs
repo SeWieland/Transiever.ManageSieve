@@ -240,18 +240,10 @@ public sealed class CommandLineOptions
         value is "-h" or "--help" or "help";
 
     private static bool IsSecretOptionValue(string value) =>
-        value.StartsWith("--sieve-password=", StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith("--sieve-password-stdin=", StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith(
-            "--sieve-client-certificate-password=",
-            StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith(
-            "--sieve-client-certificate-password-stdin=",
-            StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith("--sieve-oauth-token=", StringComparison.OrdinalIgnoreCase) ||
-        value.StartsWith(
-            "--sieve-oauth-token-stdin=",
-            StringComparison.OrdinalIgnoreCase);
+        Transiever.Common.Cli.SecretOptions.IsAssignment(value,
+            "--sieve-password", "--sieve-password-stdin",
+            "--sieve-client-certificate-password", "--sieve-client-certificate-password-stdin",
+            "--sieve-oauth-token", "--sieve-oauth-token-stdin");
 
     private static string ReadOptionValue(
         IReadOnlyList<string> args,
