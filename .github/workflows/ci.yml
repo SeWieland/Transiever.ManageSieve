@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+env:
+  TRANSIEVER_LIVE_TESTS: "false"
+  TRANSIEVER_LIVE_WRITES: "false"
+
 jobs:
   build-test:
     name: Build and test (${{ matrix.os }})
@@ -35,3 +39,59 @@ jobs:
 
       - name: Test
         run: dotnet test --solution Transiever.ManageSieve.slnx --configuration Release --no-build
+
+  native-aot:
+    name: Native AOT smoke (${{ matrix.rid }})
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            rid: win-x64
+            executable: msieve.exe
+          - os: windows-latest
+            rid: win-x86
+            executable: msieve.exe
+          - os: ubuntu-latest
+            rid: linux-x64
+            executable: msieve
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: 10.0.x
+      - name: Install Linux Native AOT prerequisites
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes clang zlib1g-dev
+      - name: Restore Native AOT dependencies
+        run: >-
+          dotnet restore src/Transiever.ManageSieve.Cli/Transiever.ManageSieve.Cli.csproj
+          --runtime ${{ matrix.rid }} --no-http-cache
+          -p:SelfContained=true -p:PublishAot=true -p:PublishTrimmed=true -p:PublishSingleFile=true
+          -p:InvariantGlobalization=false -p:TreatWarningsAsErrors=true
+          -p:SaslClientProject=__missing_saslclient__.csproj
+      - name: Publish Native AOT executable
+        run: >-
+          dotnet publish src/Transiever.ManageSieve.Cli/Transiever.ManageSieve.Cli.csproj
+          --configuration Release --runtime ${{ matrix.rid }} --self-contained true --no-restore
+          -p:PublishAot=true -p:PublishTrimmed=true -p:PublishSingleFile=true
+          -p:InvariantGlobalization=false -p:TreatWarningsAsErrors=true
+          -p:SaslClientProject=__missing_saslclient__.csproj
+          --output artifacts/publish/${{ matrix.rid }}
+      - name: Verify executable architecture and smoke test help
+        run: |
+          executable="./artifacts/publish/${{ matrix.rid }}/${{ matrix.executable }}"
+          format="$(file -b "$executable")"
+          echo "Executable format for ${{ matrix.rid }}: $format"
+          case "${{ matrix.rid }}" in
+            win-x64) [[ "$format" == PE32+\ executable* && "$format" == *x86-64* ]] ;;
+            win-x86) [[ "$format" == PE32\ executable* && ( "$format" == *80386* || "$format" == *i386* ) ]] ;;
+            linux-x64) [[ "$format" == ELF\ 64-bit* && "$format" == *x86-64* ]] ;;
+          esac
+          "$executable" --help

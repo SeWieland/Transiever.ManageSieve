@@ -24,6 +24,9 @@ It does not optimize filters, discover mail accounts, or decide whether a candid
 The `msieve` CLI is a thin operator surface over the same protocol library.
 It exposes direct capabilities, script inspection, validation, upload, activation, deactivation, and delete operations.
 It does not add backups, rollback, history, reconciliation, Outlook import, provider metadata, Sieve generation, or credential storage.
+The CLI references the versioned `Transiever.Common.Cli` package for hidden input, required single-line secrets, and secret-option assignment matching.
+Source selection, configuration precedence, prompts, and authentication timing remain CLI-owned.
+The protocol library has no dependency on that package or on `Transiever.Common.Accounts`.
 
 `Transiever.SieveRuler` consumes this library for remote inspection, validation, upload, activation, and rollback primitives.
 `Transiever.OutlookResiever` consumes SieveRuler and does not reference this library directly.

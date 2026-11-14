@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using Transiever.Common.Cli;
 using Transiever.ManageSieve;
 
 namespace Transiever.ManageSieve.Cli;
@@ -250,10 +251,7 @@ public sealed class EnvironmentSieveServerConfigurationProvider
     }
 
     private string ReadStandardInputSecret(string secretName) =>
-        _readLine() is { Length: > 0 } password
-            ? password
-            : throw new InvalidOperationException(
-                $"Standard input did not contain {secretName}.");
+        SecretInput.ReadNonEmptyLine(_readLine, $"Standard input did not contain {secretName}.");
 
     private static string ReadPassword() =>
         ReadSecret("ManageSieve password: ");
@@ -267,33 +265,9 @@ public sealed class EnvironmentSieveServerConfigurationProvider
     private static string ReadSecret(string prompt)
     {
         Console.Write(prompt);
-        var secret = new System.Text.StringBuilder();
-        while (true)
-        {
-            ConsoleKeyInfo key = Console.ReadKey(intercept: true);
-            if (key.Key == ConsoleKey.Enter)
-            {
-                break;
-            }
-
-            if (key.Key == ConsoleKey.Backspace)
-            {
-                if (secret.Length > 0)
-                {
-                    secret.Length--;
-                }
-
-                continue;
-            }
-
-            if (!char.IsControl(key.KeyChar))
-            {
-                secret.Append(key.KeyChar);
-            }
-        }
-
+        string secret = SecretInput.ReadHidden();
         Console.WriteLine();
-        return secret.ToString();
+        return secret;
     }
 
     private X509Certificate2 LoadClientCertificate(CommandLineOptions options)

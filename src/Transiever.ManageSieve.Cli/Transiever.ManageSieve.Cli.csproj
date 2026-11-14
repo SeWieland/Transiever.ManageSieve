@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Transiever.ManageSieve\Transiever.ManageSieve.csproj" />
+    <PackageReference Include="Transiever.Common.Cli" Version="1.2.0" />
   </ItemGroup>
 
   <ItemGroup>
